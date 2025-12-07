@@ -112,7 +112,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_name_v2', 
+        'lms_cookie_name_v3', 
         'lms_signature_key', 
         cookie_expiry_days=30
     )
