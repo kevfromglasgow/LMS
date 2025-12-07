@@ -67,22 +67,26 @@ def display_fixtures_visual(matches):
         status = match['status']
         dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
         
+        # 1. Prepare CENTER content (Clean strings, no indentation)
         if status == 'FINISHED':
             h_score = match['score']['fullTime']['home']
             a_score = match['score']['fullTime']['away']
             center_html = f'<div class="score-text">{h_score} - {a_score}</div><div class="status-text">FT</div>'
+            
         elif status in ['IN_PLAY', 'PAUSED']:
             h_score = match['score']['fullTime']['home']
             a_score = match['score']['fullTime']['away']
             center_html = f'<div class="score-text" style="color:#ff4b4b;">{h_score} - {a_score}</div><div class="status-text" style="color:#ff4b4b;">LIVE</div>'
+            
         elif status == 'POSTPONED':
             center_html = '<div class="time-text">P-P</div><div class="status-text">Postponed</div>'
+            
         else:
             time_str = dt.strftime("%H:%M")
             date_str = dt.strftime("%a %d")
             center_html = f'<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>'
 
-        # Renders the card using classes that MUST exist in your screen.css
+        # 2. Render Card
         st.markdown(f"""
         <div class="match-card">
             <div class="team-container home-team">
@@ -101,7 +105,7 @@ def display_fixtures_visual(matches):
 
 # --- 5. MAIN APP LOGIC ---
 def main():
-    # Load the CSS file here
+    # Load the CSS file
     inject_custom_css("screen.css")
 
     with st.sidebar:
@@ -123,7 +127,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v14', # Bumped to v14
+        'lms_cookie_v15', # Bumped to v15
         'lms_key', 
         cookie_expiry_days=30
     )
@@ -137,22 +141,13 @@ def main():
             st.write(f"Logged in as **{name}**")
             authenticator.logout('Logout', 'main')
 
-        with st.sidebar:
-            st.write(f"Logged in as **{name}**")
-            authenticator.logout('Logout', 'main')
-
-        # --- REPLACED TITLE WITH CUSTOM HERO HEADER ---
+        # --- CUSTOM HERO HEADER ---
         st.markdown("""
             <div class="hero-container">
                 <div class="hero-title">LAST MAN STANDING</div>
                 <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
             </div>
         """, unsafe_allow_html=True)
-        
-        # (Remove this old line) -> st.title("⚽ LAST MAN STANDING")
-        # (Remove this old line) -> st.markdown("---")
-
-        gw = get_current_gameweek()
 
         gw = get_current_gameweek()
         if not gw: st.stop()
