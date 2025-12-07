@@ -181,6 +181,7 @@ def get_matches_for_gameweek(gw):
     except: return []
 
 def get_gameweek_deadline(matches):
+    # FIX: Remove 'Z' to make naive UTC time
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '')) for m in matches]
     return min(dates) if dates else datetime.utcnow()
 
@@ -204,7 +205,6 @@ def get_game_settings():
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
-# --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(gw, matches):
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
@@ -469,7 +469,6 @@ def main():
         except NameError: pass 
     
     matches = get_matches_for_gameweek(gw)
-    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -493,11 +492,8 @@ def main():
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
+    if sim_reveal: reveal_time = datetime.now() - timedelta(hours=1)
     now = datetime.utcnow()
-    
-    # Override for Admin Simulation
-    if sim_reveal: reveal_time = now - timedelta(hours=1)
-        
     is_reveal_active = (now > reveal_time)
 
     # 1. Metrics & Selection
@@ -514,31 +510,38 @@ def main():
     active_names = sorted([p['name'] for p in all_players_full])
     options = ["Select your name...", "➕ I am a New Player"] + active_names
     
-    # MOBILE FIX: Use Expander + Radio for selection logic
-    if "expander_state" not in st.session_state:
-        st.session_state.expander_state = False
+    # MOBILE FIX: Auto-Close Expander Logic
+    if "selected_radio_option" not in st.session_state:
+        st.session_state.selected_radio_option = "Select your name..."
+    if "expander_version" not in st.session_state:
+        st.session_state.expander_version = 0
 
-    def close_expander():
-        st.session_state.expander_state = False
+    def radio_callback():
+        st.session_state.expander_version += 1
 
-    with st.expander("👤 Tap to select your name", expanded=st.session_state.expander_state):
-        selected_option = st.radio(
+    expander_label = f"👤 {st.session_state.selected_radio_option}" if st.session_state.selected_radio_option != "Select your name..." else "👤 Tap to select your name..."
+    
+    # Dynamic Key forces rebuild (close) on change
+    expander_key = f"user_select_expander_{st.session_state.expander_version}"
+
+    with st.expander(expander_label, expanded=False):
+        st.radio(
             "List of Players:", 
             options, 
+            key="selected_radio_option",
             label_visibility="collapsed",
-            key="player_selection_radio",
-            on_change=close_expander
+            on_change=radio_callback
         )
     
     actual_user_name = None
-    if selected_option == "➕ I am a New Player":
+    if st.session_state.selected_radio_option == "➕ I am a New Player":
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
             clean_name = new_name_input.strip().title()
             if clean_name in active_names: st.error(f"'{clean_name}' already exists!")
             else: actual_user_name = clean_name
-    elif selected_option != "Select your name...":
-        actual_user_name = selected_option
+    elif st.session_state.selected_radio_option != "Select your name...":
+        actual_user_name = st.session_state.selected_radio_option
 
     if actual_user_name:
         user_ref = db.collection('players').document(actual_user_name)
@@ -550,7 +553,6 @@ def main():
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
             if pick_ref.get().exists:
-                # SAFE: Generic message to prevent snooping
                 st.success(f"✅ {actual_user_name} has already made a selection for Gameweek {gw}.")
                 st.caption("See the 'Still Standing' list below for details (picks revealed 30 mins before kick-off).")
             else:
