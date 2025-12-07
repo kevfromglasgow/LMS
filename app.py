@@ -49,12 +49,24 @@ def inject_custom_css():
         .player-row-container {
             display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
+        
+        /* ACTIVE CARD STYLE */
         .player-card {
             background-color: #28002B; border: 1px solid rgba(0, 255, 135, 0.3); border-radius: 12px;
             padding: 12px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s;
             display: flex; align-items: center; justify-content: space-between; width: 100%;
         }
         .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
+
+        /* ELIMINATED CARD STYLE */
+        .player-card-eliminated {
+            background-color: #1a1a1a; /* Grey/Black */
+            border: 1px solid #444; 
+            border-radius: 12px;
+            padding: 10px 20px; 
+            display: flex; align-items: center; justify-content: space-between; width: 100%;
+            opacity: 0.8;
+        }
         
         .pc-name { font-size: 16px; font-weight: 700; color: #fff; flex: 1; text-align: left; }
         .pc-center { flex: 0 0 100px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -65,6 +77,7 @@ def inject_custom_css():
         
         .pc-hidden { font-size: 24px; }
         .pc-team { font-size: 14px; color: #00ff87; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
+        .pc-eliminated-text { font-size: 12px; color: #ff4b4b; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
 
         .match-card {
             background-color: #28002B; border-radius: 12px; padding: 12px 10px;
@@ -100,10 +113,11 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # --- 4. HELPER FUNCTIONS ---
-def get_all_players_from_db():
+def get_all_players_full():
+    """Fetch FULL player data (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
-        return sorted([doc.id for doc in docs])
+        return [doc.to_dict() for doc in docs]
     except: return []
 
 def get_all_picks_for_gw(gw):
@@ -139,18 +153,6 @@ def calculate_team_results(matches):
             results.update({home:'PENDING', away:'PENDING'})
     return results
 
-def get_game_settings():
-    """Fetches global game settings (like rollover multiplier)"""
-    doc = db.collection('settings').document('config').get()
-    if doc.exists:
-        return doc.to_dict()
-    else:
-        # Default settings if document doesn't exist
-        return {'rollover_multiplier': 1}
-
-def update_game_settings(multiplier):
-    db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
-
 def admin_eliminate_losers(gw, matches):
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
@@ -160,36 +162,21 @@ def admin_eliminate_losers(gw, matches):
         team = p['team']
         result = team_results.get(team, 'PENDING')
         if result == 'LOSE':
-            db.collection('players').document(user).update({'status': 'eliminated'})
+            # Mark as eliminated AND save which week it happened
+            db.collection('players').document(user).update({
+                'status': 'eliminated',
+                'eliminated_gw': gw
+            })
             count += 1
     return count
 
-def admin_reset_game(current_gw, is_rollover=False):
-    """Resets game. If Rollover=True, increments pot multiplier."""
-    
-    # 1. Reset Players
+def admin_reset_game(current_gw):
     docs = db.collection('players').stream()
     for doc in docs:
-        db.collection('players').document(doc.id).update({'status': 'active', 'used_teams': []})
-        
-    # 2. Delete Current Picks
+        db.collection('players').document(doc.id).update({'status': 'active', 'used_teams': [], 'eliminated_gw': None})
     picks = db.collection('picks').where('matchday', '==', current_gw).stream()
     for pick in picks:
         db.collection('picks').document(pick.id).delete()
-
-    # 3. Handle Pot Multiplier
-    current_settings = get_game_settings()
-    current_mult = current_settings.get('rollover_multiplier', 1)
-    
-    if is_rollover:
-        new_mult = current_mult + 1
-        msg = f"🔄 ROLLOVER! Pot Multiplier increased to {new_mult}x"
-    else:
-        new_mult = 1
-        msg = "Game Reset. Pot Multiplier reset to 1x."
-        
-    update_game_settings(new_mult)
-    return msg
 
 def bulk_import_history():
     def fix_team(t):
@@ -250,6 +237,10 @@ def bulk_import_history():
     for name, picks in RAW_DATA.items():
         is_active = (len(picks) == 7)
         status = 'active' if is_active else 'eliminated'
+        # If eliminated, calculate WHICH week. Week 1 = GW9.
+        # If len(picks) is 1, they lost week 1 (GW9).
+        eliminated_gw = (len(picks) + 8) if not is_active else None 
+        
         used_teams = []
         for i, raw_team in enumerate(picks):
             gw = i + 9
@@ -266,50 +257,90 @@ def bulk_import_history():
             })
 
         db.collection('players').document(name).set({
-            'name': name, 'status': status, 'used_teams': used_teams,
+            'name': name, 'status': status, 'used_teams': used_teams, 
+            'eliminated_gw': eliminated_gw,
             'email': '', 'password': ''
         })
         count_players += 1
     return count_players
 
-def display_player_status(picks, matches, reveal_mode=False):
-    st.subheader("WEEKLY PICKS")
+def display_player_status(picks, matches, players_data, reveal_mode=False):
+    """
+    Displays two lists:
+    1. Survivors (Active)
+    2. The Fallen (Eliminated - Sorted by Elimination Week)
+    """
+    st.subheader("WEEKLY LEADERBOARD")
     team_results = calculate_team_results(matches)
+    
+    # Create Map of User -> Pick for THIS week
+    user_pick_map = {p['user']: p['team'] for p in picks}
+    
     crest_map = {}
     for m in matches:
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
         crest_map[m['awayTeam']['name']] = m['awayTeam']['crest']
         
-    cards_html = ""
-    sorted_picks = sorted(picks, key=lambda x: x.get('user', ''))
+    # --- SPLIT PLAYERS INTO ACTIVE & ELIMINATED ---
+    active_players = []
+    eliminated_players = []
     
-    for p in sorted_picks:
-        user = p.get('user', 'Unknown')
-        team = p.get('team', 'Unknown')
-        
-        player_doc = db.collection('players').document(user).get()
-        is_eliminated = player_doc.exists and player_doc.to_dict().get('status') == 'eliminated'
-        
-        if is_eliminated:
-            mid = '<span class="pc-hidden">❌</span>'
-            btm = '<div class="pc-team" style="color:red;">ELIMINATED</div>'
-        elif reveal_mode:
-            badge_url = crest_map.get(team, "")
-            result = team_results.get(team, 'PENDING')
-            status_html = ""
-            if result == 'WIN': status_html = '<div class="status-tag-win">THROUGH</div>'
-            elif result == 'LOSE': status_html = '<div class="status-tag-loss">OUT</div>'
-            
-            mid = f'<img src="{badge_url}" class="pc-badge">{status_html}' if badge_url else '<span class="pc-hidden">⚽</span>'
-            btm = f'<div class="pc-team">{team}</div>'
+    for p in players_data:
+        if p.get('status') == 'eliminated':
+            eliminated_players.append(p)
         else:
-            mid = '<span class="pc-hidden">🔒</span>'
-            btm = '<div class="pc-team">HIDDEN</div>'
+            active_players.append(p)
+            
+    # Sort Active: Alphabetical
+    active_players.sort(key=lambda x: x['name'])
+    
+    # Sort Eliminated: Highest GW (Recently Eliminated) at Top, Lowest GW (First Out) at Bottom
+    # Default to 0 if data missing
+    eliminated_players.sort(key=lambda x: x.get('eliminated_gw', 0), reverse=True)
 
-        cards_html += f'<div class="player-card"><div class="pc-name">{user}</div><div class="pc-center">{mid}</div>{btm}</div>'
+    # --- RENDER ACTIVE PLAYERS ---
+    active_html = ""
+    for p in active_players:
+        name = p['name']
+        team = user_pick_map.get(name, None)
         
-    if not cards_html: st.info("No selections made for this gameweek yet.")
-    else: st.markdown(f'<div class="player-row-container">{cards_html}</div>', unsafe_allow_html=True)
+        # Visibility Logic
+        if team:
+            if reveal_mode:
+                badge_url = crest_map.get(team, "")
+                result = team_results.get(team, 'PENDING')
+                status_html = ""
+                if result == 'WIN': status_html = '<div class="status-tag-win">THROUGH</div>'
+                elif result == 'LOSE': status_html = '<div class="status-tag-loss">OUT</div>'
+                
+                mid = f'<img src="{badge_url}" class="pc-badge">{status_html}' if badge_url else '<span class="pc-hidden">⚽</span>'
+                btm = f'<div class="pc-team">{team}</div>'
+            else:
+                mid = '<span class="pc-hidden">🔒</span>'
+                btm = '<div class="pc-team">HIDDEN</div>'
+        else:
+            # Haven't picked yet
+            mid = '<span class="pc-hidden">⏳</span>'
+            btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
+
+        active_html += f'<div class="player-card"><div class="pc-name">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
+    
+    st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
+
+    # --- RENDER ELIMINATED PLAYERS ---
+    if eliminated_players:
+        st.markdown("### 🪦 THE FALLEN")
+        elim_html = ""
+        for p in eliminated_players:
+            name = p['name']
+            gw_out = p.get('eliminated_gw', '?')
+            
+            mid = '<span class="pc-hidden" style="opacity:0.5">💀</span>'
+            btm = f'<div class="pc-eliminated-text">OUT GW{gw_out}</div>'
+            
+            elim_html += f'<div class="player-card-eliminated"><div class="pc-name" style="color:#888">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
+            
+        st.markdown(f'<div class="player-row-container">{elim_html}</div>', unsafe_allow_html=True)
 
 def display_fixtures_visual(matches):
     st.subheader(f"Fixtures")
@@ -340,7 +371,6 @@ def main():
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
         st.divider()
         gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
-        
         st.divider()
         if st.button("💀 Eliminate Losers (Current GW)"):
             gw = gw_override
@@ -349,21 +379,12 @@ def main():
             st.success(f"Processed! {count} players eliminated.")
             st.cache_data.clear() 
             st.rerun()
-            
-        # --- NEW ROLLOVER BUTTON ---
-        if st.button("🔄 ROLLOVER (Everyone Lost)"):
-            msg = admin_reset_game(gw_override, is_rollover=True)
-            st.warning(msg)
+        if st.button("🔄 Start New Game (Reset All)"):
+            admin_reset_game(gw_override)
+            st.success("Game Reset!")
             st.cache_data.clear()
             st.rerun()
-            
-        if st.button("⚠️ HARD RESET (New Season)"):
-            msg = admin_reset_game(gw_override, is_rollover=False)
-            st.success(msg)
-            st.cache_data.clear()
-            st.rerun()
-            
-        if st.button("⚡ Inject Spreadsheet Data"):
+        if st.button("⚡ Inject Spreadsheet Data (Weeks 9-15)"):
             count = bulk_import_history()
             st.success(f"Imported {count} players!")
             st.cache_data.clear()
@@ -384,12 +405,8 @@ def main():
         st.stop()
     
     all_picks = get_all_picks_for_gw(gw)
-    existing_players = get_all_players_from_db() 
-    
-    # Calculate Dynamic Pot
-    settings = get_game_settings()
-    multiplier = settings.get('rollover_multiplier', 1)
-    pot_total = len(existing_players) * ENTRY_FEE * multiplier
+    # New: Fetch full player objects for sorting
+    all_players_full = get_all_players_from_db() 
     
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
@@ -399,24 +416,25 @@ def main():
     now = datetime.now()
     is_reveal_active = (now > reveal_time)
 
-    display_player_status(all_picks, matches, reveal_mode=is_reveal_active)
+    # Pass full player list to display function
+    display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
+    
+    # Calculate Active Pot
+    active_count = len([p for p in all_players_full if p.get('status') == 'active'])
     
     st.write("")
     c1, c2 = st.columns(2)
-    
-    # Updated Pot Metric to show Rollover Status
-    pot_label = "💰 Prize Pot"
-    if multiplier > 1:
-        pot_label = f"💰 ROLLOVER POT ({multiplier}x)"
-        
-    with c1: st.metric(pot_label, f"£{pot_total}")
+    with c1: st.metric("💰 Prize Pot", f"£{active_count * ENTRY_FEE}")
     with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    options = ["Select your name...", "➕ I am a New Player"] + existing_players
+    # Only show ACTIVE players in dropdown
+    # We create a list of names for the dropdown
+    player_names = sorted([p['name'] for p in all_players_full])
+    options = ["Select your name...", "➕ I am a New Player"] + player_names
     selected_option = st.selectbox("Who are you?", options)
     actual_user_name = None
 
@@ -424,7 +442,7 @@ def main():
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
             clean_name = new_name_input.strip().title()
-            if clean_name in existing_players:
+            if clean_name in player_names:
                 st.error(f"'{clean_name}' already exists!")
             else:
                 actual_user_name = clean_name
