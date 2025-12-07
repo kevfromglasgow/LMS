@@ -233,7 +233,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v20', # Bump to v20
+        'lms_cookie_v21', 
         'lms_key', 
         cookie_expiry_days=30
     )
@@ -261,23 +261,18 @@ def main():
         display_fixtures_visual(matches)
         st.write("") 
 
-        # --- REVISED DEADLINE LOGIC FOR TESTING ---
-        # 1. Filter matches to find the NEXT one that hasn't played yet
-        upcoming_matches = [m for m in matches if m['status'] == 'SCHEDULED']
+        # --- 🛠️ TEST MODE: FORCE FUTURE DEADLINE ---
+        # We manually set the deadline to 24 hours from now.
+        # This GUARANTEES that opponent picks will be hidden.
         
-        # 2. Use the first upcoming match as the "New Deadline"
-        if upcoming_matches:
-            first_kickoff = get_gameweek_deadline(upcoming_matches)
-        else:
-            first_kickoff = get_gameweek_deadline(matches)
-
-        deadline = first_kickoff - timedelta(hours=1)
-        reveal_time = first_kickoff - timedelta(minutes=30)
-        now = datetime.now(first_kickoff.tzinfo)
-
+        now = datetime.now()
+        deadline = now + timedelta(days=1) # Deadline is tomorrow
+        reveal_time = deadline + timedelta(minutes=30) # Reveal is tomorrow + 30 mins
+        
+        # Display the "Fake" deadline
         c1, c2 = st.columns(2)
         with c1: st.metric("💰 Prize Pot", f"£{len(users_dict) * ENTRY_FEE}")
-        with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
+        with c2: st.metric("DEADLINE (TESTING)", deadline.strftime("%a %H:%M"))
 
         tab1, tab2 = st.tabs(["🎯 Make Selection", "👀 Opponent Watch"])
 
@@ -296,19 +291,17 @@ def main():
             #     st.error("🚫 Gameweek Locked")
             
             else:
-                if now > deadline:
-                    st.warning("⚠️ TESTING MODE: Deadline unlocked.")
-
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
                 used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
 
+                # Slightly relaxed filter to ensure teams show up even if games started
                 valid = set([m['homeTeam']['name'] for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY']] + 
                            [m['awayTeam']['name'] for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY']])
                 available = sorted([t for t in valid if t not in used])
 
                 if not available:
-                    st.warning("No teams available to pick.")
+                    st.warning("No teams available to pick (Check if games are SCHEDULED).")
                 else:
                     with st.form("pick"):
                         choice = st.selectbox("Select Team:", available)
