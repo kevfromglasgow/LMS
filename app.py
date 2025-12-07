@@ -7,7 +7,7 @@ from google.cloud import firestore
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Last Man Standing", layout="centered")
 
-# --- 2. SECRETS & DATABASE SETUP ---
+# --- 2. CONFIGURATION & SECRETS ---
 try:
     API_KEY = st.secrets["FOOTBALL_API_KEY"]
     db = firestore.Client.from_service_account_info(st.secrets["firebase"])
@@ -17,6 +17,7 @@ except Exception as e:
 
 PL_COMPETITION_ID = 2021
 ENTRY_FEE = 10
+ADMIN_PASSWORD = "admin123" # 🔒 CHANGE THIS PASSWORD!
 
 # --- 3. CUSTOM CSS ---
 def inject_custom_css():
@@ -49,22 +50,16 @@ def inject_custom_css():
         .player-row-container {
             display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
-        
-        /* ACTIVE CARD STYLE */
         .player-card {
             background-color: #28002B; border: 1px solid rgba(0, 255, 135, 0.3); border-radius: 12px;
             padding: 12px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s;
             display: flex; align-items: center; justify-content: space-between; width: 100%;
         }
         .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
-
-        /* ELIMINATED CARD STYLE */
+        
         .player-card-eliminated {
-            background-color: #1a1a1a; /* Grey/Black */
-            border: 1px solid #444; 
-            border-radius: 12px;
-            padding: 10px 20px; 
-            display: flex; align-items: center; justify-content: space-between; width: 100%;
+            background-color: #1a1a1a; border: 1px solid #444; border-radius: 12px;
+            padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; width: 100%;
             opacity: 0.8;
         }
         
@@ -101,17 +96,20 @@ def inject_custom_css():
         div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
         div[data-testid="stMetricValue"] { color: #ffffff !important; }
         
-        /* EXPANDER STYLING */
+        /* EXPANDER */
         .streamlit-expanderHeader {
-            background-color: #28002B !important;
-            color: #ff4b4b !important; /* Red text for The Fallen */
-            font-weight: 800 !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
-            border-radius: 8px !important;
+            background-color: #28002B !important; color: #ff4b4b !important; font-weight: 800 !important;
+            border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 8px !important;
         }
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
-        input[type="text"] { color: #ffffff !important; font-weight: bold; background-color: rgba(255,255,255,0.1) !important; border: 1px solid #00ff87 !important; }
+        
+        /* Input Text Color Fix */
+        input[type="text"], input[type="password"] { 
+            color: #ffffff !important; font-weight: bold; 
+            background-color: rgba(255,255,255,0.1) !important; 
+            border: 1px solid #00ff87 !important; 
+        }
         
         @media (max-width: 600px) {
             .team-container { font-size: 12px; }
@@ -123,7 +121,6 @@ def inject_custom_css():
 
 # --- 4. HELPER FUNCTIONS ---
 def get_all_players_full():
-    """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -271,17 +268,14 @@ def bulk_import_history():
     for name, picks in RAW_DATA.items():
         is_active = (len(picks) == 7)
         status = 'active' if is_active else 'eliminated'
-        # Week 1 = GW9. Week 7 = GW15.
         eliminated_gw = (len(picks) + 8) if not is_active else None 
         used_teams = []
         for i, raw_team in enumerate(picks):
             gw = i + 9
             team_name = fix_team(raw_team)
             used_teams.append(team_name)
-            
             result = 'WIN'
-            if not is_active and i == len(picks) - 1:
-                result = 'LOSS'
+            if not is_active and i == len(picks) - 1: result = 'LOSS'
             
             db.collection('picks').document(f"{name}_GW{gw}").set({
                 'user': name, 'team': team_name, 'matchday': gw, 
@@ -290,8 +284,7 @@ def bulk_import_history():
 
         db.collection('players').document(name).set({
             'name': name, 'status': status, 'used_teams': used_teams, 
-            'eliminated_gw': eliminated_gw,
-            'email': '', 'password': ''
+            'eliminated_gw': eliminated_gw, 'email': '', 'password': ''
         })
         count_players += 1
     return count_players
@@ -300,7 +293,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     st.subheader("STILL STANDING")
     team_results = calculate_team_results(matches)
     user_pick_map = {p['user']: p['team'] for p in picks}
-    
     crest_map = {}
     for m in matches:
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
@@ -308,20 +300,12 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         
     active_players = []
     eliminated_players = []
-    
     for p in players_data:
-        name = p['name']
-        status = p.get('status')
-        team = user_pick_map.get(name)
-        result = team_results.get(team, 'PENDING') if team else 'PENDING'
-        
-        if status == 'eliminated':
+        if p.get('status') == 'eliminated': eliminated_players.append(p)
+        elif p.get('status') == 'active' and team_results.get(user_pick_map.get(p['name']), 'PENDING') == 'LOSE':
+            p['pending_elimination'] = True
             eliminated_players.append(p)
-        elif status == 'active' and result == 'LOSE':
-            p['pending_elimination'] = True 
-            eliminated_players.append(p)
-        else:
-            active_players.append(p)
+        else: active_players.append(p)
             
     active_players.sort(key=lambda x: x['name'])
     eliminated_players.sort(key=lambda x: (x.get('pending_elimination', False), x.get('eliminated_gw', 0)), reverse=True)
@@ -330,14 +314,12 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     for p in active_players:
         name = p['name']
         team = user_pick_map.get(name, None)
-        
         if team:
             if reveal_mode:
                 badge_url = crest_map.get(team, "")
                 result = team_results.get(team, 'PENDING')
                 status_html = ""
                 if result == 'WIN': status_html = '<div class="status-tag-win">THROUGH</div>'
-                
                 mid = f'<img src="{badge_url}" class="pc-badge">{status_html}' if badge_url else '<span class="pc-hidden">⚽</span>'
                 btm = f'<div class="pc-team">{team}</div>'
             else:
@@ -346,7 +328,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         else:
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
-
         active_html += f'<div class="player-card"><div class="pc-name">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
     
     st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
@@ -356,7 +337,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
             elim_html = ""
             for p in eliminated_players:
                 name = p['name']
-                
                 if p.get('pending_elimination'):
                     team = user_pick_map.get(name)
                     badge_url = crest_map.get(team, "")
@@ -368,9 +348,7 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
                     mid = '<span class="pc-hidden" style="opacity:0.5">💀</span>'
                     btm = f'<div class="pc-eliminated-text">OUT GW{gw_out}</div>'
                     card_class = "player-card-eliminated"
-
                 elim_html += f'<div class="{card_class}"><div class="pc-name" style="color:#aaa">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
-                
             st.markdown(f'<div class="player-row-container">{elim_html}</div>', unsafe_allow_html=True)
 
 def display_fixtures_visual(matches):
@@ -396,28 +374,48 @@ def display_fixtures_visual(matches):
 def main():
     inject_custom_css()
 
-    # --- ADMIN SIDEBAR ---
+    # --- ADMIN SIDEBAR WITH PASSWORD LOCK ---
     with st.sidebar:
-        st.header("🔧 Admin")
-        simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
-        st.divider()
-        gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
-        st.divider()
-        if st.button("🔄 ROLLOVER (Everyone Lost)"):
-            msg = admin_reset_game(gw_override, is_rollover=True)
-            st.warning(msg)
-            st.cache_data.clear()
-            st.rerun()
-        if st.button("⚠️ HARD RESET (New Season)"):
-            msg = admin_reset_game(gw_override, is_rollover=False)
-            st.success(msg)
-            st.cache_data.clear()
-            st.rerun()
-        if st.button("⚡ Inject Spreadsheet Data (GW9-15)"):
-            count = bulk_import_history()
-            st.success(f"Imported {count} players!")
-            st.cache_data.clear()
-            st.rerun()
+        st.header("🔧 Admin Panel")
+        
+        # Initialize session state for login
+        if 'admin_logged_in' not in st.session_state:
+            st.session_state.admin_logged_in = False
+
+        if not st.session_state.admin_logged_in:
+            pwd = st.text_input("Admin Password", type="password")
+            if pwd == ADMIN_PASSWORD:
+                st.session_state.admin_logged_in = True
+                st.rerun()
+        else:
+            if st.button("Logout"):
+                st.session_state.admin_logged_in = False
+                st.rerun()
+                
+            st.success("✅ Logged In")
+            simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
+            st.divider()
+            
+            real_gw = get_current_gameweek_from_api() 
+            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
+            
+            st.divider()
+            # Buttons
+            if st.button("🔄 ROLLOVER (Everyone Lost)"):
+                msg = admin_reset_game(gw_override, is_rollover=True)
+                st.warning(msg)
+                st.cache_data.clear()
+                st.rerun()
+            if st.button("⚠️ HARD RESET (New Season)"):
+                msg = admin_reset_game(gw_override, is_rollover=False)
+                st.success(msg)
+                st.cache_data.clear()
+                st.rerun()
+            if st.button("⚡ Inject Spreadsheet Data"):
+                count = bulk_import_history()
+                st.success(f"Imported {count} players!")
+                st.cache_data.clear()
+                st.rerun()
 
     st.markdown("""
         <div class="hero-container">
@@ -426,9 +424,32 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    gw = gw_override
-    matches = get_matches_for_gameweek(gw)
+    # Logic variables (Default if admin not logged in)
+    gw = st.session_state.get('gw_override', 15) if st.session_state.get('admin_logged_in') else 15
+    # Actually, let's just stick to 15 default or override if admin is logged in
+    if st.session_state.get('admin_logged_in'):
+        # We need to capture the slider value if it exists, otherwise default 15
+        # Streamlit sliders in sidebar return value immediately to variable 'gw_override' in scope
+        # But if we aren't logged in, that variable doesn't exist.
+        # We'll just use 15 for now if not logged in, or the slider value if logged in.
+        # Note: In the block above, 'gw_override' is defined. We need it here.
+        pass # Variable scope handles this if we structure carefully, but let's be safe:
     
+    # RE-DEFINE GW based on Admin State
+    if st.session_state.admin_logged_in:
+        # Use the slider value from the sidebar
+        # (It was defined in the sidebar block, but we need to access it here)
+        # Streamlit scripts rerun top-to-bottom, so we need to ensure gw_override is accessible.
+        # Since it's inside the 'if', it might not be.
+        # Let's simplify:
+        pass 
+    
+    # --- SIMPLE GW LOGIC ---
+    # If Admin logged in, use slider. If not, use fixed 15 (for testing) or API.
+    # For this specific "Testing Phase", we default to 15.
+    gw = 15 
+    
+    matches = get_matches_for_gameweek(gw)
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -441,23 +462,57 @@ def main():
     
     settings = get_game_settings()
     multiplier = settings.get('rollover_multiplier', 1)
-    pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     
-    # DEADLINE LOGIC
-    # FORCE FUTURE DATE FOR TESTING
+    # DEADLINE (Test Mode)
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
-    if simulate_reveal: reveal_time = datetime.now() - timedelta(hours=1)
+    # Check Simulate Flag (Only if admin logged in, otherwise False)
+    sim_reveal = False
+    if st.session_state.admin_logged_in:
+        # We need to grab the checkbox value. 
+        # Since we can't easily grab it across scopes without session state, 
+        # let's assume False unless user is looking at sidebar.
+        # Ideally, we put the whole logic in one flow.
+        pass
+
+    # --- RE-FACTORING FOR SCOPE SAFETY ---
+    # To avoid "variable not defined" errors, we define defaults first.
+    sim_reveal = False
+    gw = 15 
+    
+    # Re-read Sidebar for overrides
+    if st.session_state.admin_logged_in:
+        # We can't read the widget value again easily if it was inside the 'if' block visually.
+        # FIX: We rely on the fact that we just rendered it. 
+        # Actually, Streamlit is smart. If we defined 'simulate_reveal' earlier, it exists.
+        # But it was inside `with st.sidebar`.
+        pass
+        
+    # OK, the cleanest way to handle the Sidebar Inputs needing to affect Main Body:
+    # We will just duplicate the slider read if logged in, or use default.
+    
+    if st.session_state.admin_logged_in:
+        # We assume the user interacted with the sidebar widgets earlier in the script.
+        # But local variables inside 'with' blocks ARE available outside in Python.
+        # So 'gw_override' and 'simulate_reveal' SHOULD be available if that block ran.
+        try:
+            gw = gw_override
+            sim_reveal = simulate_reveal
+        except NameError:
+            gw = 15
+            sim_reveal = False
+            
+    if sim_reveal: reveal_time = datetime.now() - timedelta(hours=1)
     now = datetime.now()
     is_reveal_active = (now > reveal_time)
 
-    # --- REORDERED SECTIONS ---
-    st.write("")
+    # --- MAIN UI ---
     
     # 1. Metrics & Selection
     c1, c2 = st.columns(2)
+    pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     with c1: st.metric(pot_label, f"£{pot_total}")
     with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
@@ -474,34 +529,28 @@ def main():
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
             clean_name = new_name_input.strip().title()
-            if clean_name in active_names:
-                st.error(f"'{clean_name}' already exists!")
-            else:
-                actual_user_name = clean_name
+            if clean_name in active_names: st.error(f"'{clean_name}' already exists!")
+            else: actual_user_name = clean_name
     elif selected_option != "Select your name...":
         actual_user_name = selected_option
 
     if actual_user_name:
         user_ref = db.collection('players').document(actual_user_name)
         user_doc = user_ref.get()
-        
         if user_doc.exists and user_doc.to_dict().get('status') == 'eliminated':
             st.error(f"❌ Sorry {actual_user_name}, you have been eliminated!")
             st.info("Wait for a new game to start to rejoin.")
         else:
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
-            existing_pick = pick_ref.get()
-
-            if existing_pick.exists:
-                team = existing_pick.to_dict().get('team')
+            if pick_ref.get().exists:
+                team = pick_ref.get().to_dict().get('team')
                 st.success(f"✅ Pick confirmed for **{actual_user_name}**: **{team}**")
                 st.caption("Contact admin to change.")
             else:
                 used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
                 valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
                 available = sorted([t for t in valid if t not in used])
-
                 if not available: st.warning("No teams available.")
                 else:
                     with st.form("pick_form"):
@@ -516,6 +565,8 @@ def main():
     st.markdown("---")
     
     # 2. Status & Fixtures
+    # Fetch fresh picks if we just submitted one
+    all_picks = get_all_picks_for_gw(gw) 
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
 
