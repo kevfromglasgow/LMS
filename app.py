@@ -20,14 +20,122 @@ except Exception as e:
 PL_COMPETITION_ID = 2021  # Premier League ID
 ENTRY_FEE = 10
 
-# --- 3. CUSTOM STYLING (External File) ---
-def inject_custom_css(file_name="screen.css"):
-    """Reads a local CSS file and applies it to the app"""
-    try:
-        with open(file_name) as f:
-            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-    except FileNotFoundError:
-        st.error(f"⚠️ Could not find '{file_name}'. Make sure it is in the same folder as app.py")
+# --- 3. CUSTOM CSS (Embedded directly to prevent loading errors) ---
+def inject_custom_css():
+    st.markdown("""
+    <style>
+        /* IMPORT FONT (Teko for the Hero Header) */
+        @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&display=swap');
+
+        /* 1. BACKGROUND (Purple Theme) */
+        [data-testid="stAppViewContainer"] {
+            background: linear-gradient(rgba(31, 0, 34, 0.85), rgba(31, 0, 34, 0.95)), 
+                        url('https://images.unsplash.com/photo-1693517393451-a71a593c9870?q=80&w=1770&auto=format&fit=crop') !important;
+            background-size: cover !important;
+            background-position: center !important;
+            background-attachment: fixed !important;
+            background-repeat: no-repeat !important;
+        }
+
+        /* 2. HERO HEADER (The big title) */
+        .hero-container {
+            text-align: center;
+            padding: 20px 0 10px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .hero-title {
+            font-family: 'Teko', sans-serif;
+            font-size: 60px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #ffffff;
+            letter-spacing: 2px;
+            margin: 0;
+            line-height: 1;
+            text-shadow: 0 0 10px rgba(0, 255, 135, 0.5), 0 0 20px rgba(0, 255, 135, 0.3);
+        }
+        .hero-subtitle {
+            font-family: 'Helvetica Neue', sans-serif;
+            font-size: 14px;
+            color: #00ff87;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-top: 5px;
+            font-weight: 600;
+        }
+
+        /* 3. STANDARD TEXT */
+        h1, h2, h3, p, div, span { font-family: 'Helvetica Neue', sans-serif; }
+        h1, h2, h3 { color: #ffffff !important; text-transform: uppercase; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+
+        /* 4. METRIC CARDS */
+        div[data-testid="stMetric"] {
+            background-color: #28002B !important; 
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            padding: 15px !important; 
+            border-radius: 10px !important; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
+        div[data-testid="stMetricValue"] { color: #ffffff !important; }
+
+        /* 5. BUTTONS */
+        .stButton button {
+            background-color: #28002B !important; color: #ffffff !important;
+            border: 1px solid #00ff87 !important; font-weight: 800 !important;
+            text-transform: uppercase; letter-spacing: 1px;
+            box-shadow: 0 0 10px rgba(0, 255, 135, 0.1); transition: all 0.3s ease;
+        }
+        .stButton button:hover {
+            transform: scale(1.02); box-shadow: 0 0 20px rgba(0, 255, 135, 0.4);
+            background-color: #00ff87 !important; color: #1F0022 !important;
+        }
+
+        /* 6. MATCH CARDS */
+        .match-card {
+            background-color: #28002B; border-radius: 12px; padding: 12px 8px;
+            margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;
+            border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.2s ease;
+        }
+        .match-card:hover { border-color: #00ff87; transform: translateY(-2px); }
+
+        .team-container {
+            flex: 1; display: flex; align-items: center; font-weight: 700; color: white;
+            font-size: 15px; letter-spacing: 0.5px; min-width: 0;
+        }
+        .team-container span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+        .home-team { justify-content: flex-end; text-align: right; }
+        .home-team span { text-align: right; }
+        .away-team { justify-content: flex-start; text-align: left; }
+        .away-team span { text-align: left; }
+
+        .crest-img { 
+            width: 38px; height: 38px; object-fit: contain; margin: 0 10px; flex-shrink: 0;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); 
+        }
+
+        /* 7. SCORES */
+        .score-box {
+            flex: 0 0 90px; text-align: center; background-color: #1F0022;
+            border-radius: 8px; padding: 5px 0; border: 1px solid rgba(255,255,255,0.05); margin: 0 5px;
+        }
+        .score-text { font-size: 18px; font-weight: 800; color: #00ff87; margin: 0; line-height: 1; }
+        .time-text { font-size: 16px; font-weight: 700; color: white; margin: 0; line-height: 1; }
+        .status-text { font-size: 9px; color: #ddd; text-transform: uppercase; margin-top: 5px; letter-spacing: 1px; font-weight: 600; }
+
+        /* 8. MOBILE TWEAKS */
+        @media (max-width: 600px) {
+            .team-container { font-size: 12px; }
+            .crest-img { width: 25px; height: 25px; margin: 0 5px; }
+            .score-box { flex: 0 0 75px; }
+            .score-text { font-size: 16px; }
+            .time-text { font-size: 14px; }
+            .hero-title { font-size: 40px; } /* Smaller title on phone */
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- 4. HELPER FUNCTIONS ---
 @st.cache_data(ttl=3600)
@@ -67,26 +175,23 @@ def display_fixtures_visual(matches):
         status = match['status']
         dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
         
-        # 1. Prepare CENTER content (Clean strings, no indentation)
+        # Prepare CENTER content (Clean strings, no indentation)
         if status == 'FINISHED':
             h_score = match['score']['fullTime']['home']
             a_score = match['score']['fullTime']['away']
             center_html = f'<div class="score-text">{h_score} - {a_score}</div><div class="status-text">FT</div>'
-            
         elif status in ['IN_PLAY', 'PAUSED']:
             h_score = match['score']['fullTime']['home']
             a_score = match['score']['fullTime']['away']
             center_html = f'<div class="score-text" style="color:#ff4b4b;">{h_score} - {a_score}</div><div class="status-text" style="color:#ff4b4b;">LIVE</div>'
-            
         elif status == 'POSTPONED':
             center_html = '<div class="time-text">P-P</div><div class="status-text">Postponed</div>'
-            
         else:
             time_str = dt.strftime("%H:%M")
             date_str = dt.strftime("%a %d")
             center_html = f'<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>'
 
-        # 2. Render Card
+        # Render Card
         st.markdown(f"""
         <div class="match-card">
             <div class="team-container home-team">
@@ -105,8 +210,8 @@ def display_fixtures_visual(matches):
 
 # --- 5. MAIN APP LOGIC ---
 def main():
-    # Load the CSS file
-    inject_custom_css("screen.css")
+    # Load CSS directly
+    inject_custom_css()
 
     with st.sidebar:
         st.header("🔧 Admin")
@@ -127,7 +232,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v15', # Bumped to v15
+        'lms_cookie_v16', # Bumped to v16
         'lms_key', 
         cookie_expiry_days=30
     )
@@ -141,7 +246,7 @@ def main():
             st.write(f"Logged in as **{name}**")
             authenticator.logout('Logout', 'main')
 
-        # --- CUSTOM HERO HEADER ---
+        # --- HERO HEADER ---
         st.markdown("""
             <div class="hero-container">
                 <div class="hero-title">LAST MAN STANDING</div>
