@@ -21,7 +21,6 @@ try:
         st.error("Missing [firebase] section in secrets.toml")
         st.stop()
     
-    # Safe password retrieval
     ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "admin123")
     
 except Exception as e:
@@ -117,7 +116,7 @@ def inject_custom_css():
         /* EXPANDER STYLING */
         .streamlit-expanderHeader {
             background-color: #28002B !important;
-            color: #ff4b4b !important; /* Red text for The Fallen */
+            color: #ff4b4b !important;
             font-weight: 800 !important;
             border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 8px !important;
@@ -125,25 +124,13 @@ def inject_custom_css():
         
         /* ROLLOVER BANNER */
         .rollover-banner {
-            background-color: #ff4b4b;
-            color: white;
-            text-align: center;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            font-family: 'Teko', sans-serif;
-            font-size: 30px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            box-shadow: 0 0 20px rgba(255, 75, 75, 0.6);
+            background-color: #ff4b4b; color: white; text-align: center;
+            padding: 15px; border-radius: 10px; margin-bottom: 20px;
+            font-family: 'Teko', sans-serif; font-size: 30px; font-weight: 700;
+            letter-spacing: 2px; box-shadow: 0 0 20px rgba(255, 75, 75, 0.6);
             animation: pulse 2s infinite;
         }
-        
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-            100% { transform: scale(1); }
-        }
+        @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.02);} 100% {transform:scale(1);} }
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
         input[type="text"], input[type="password"] { 
@@ -162,7 +149,6 @@ def inject_custom_css():
 
 # --- 4. HELPER FUNCTIONS ---
 def get_all_players_full():
-    """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -189,8 +175,9 @@ def get_matches_for_gameweek(gw):
     except: return []
 
 def get_gameweek_deadline(matches):
-    dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '+00:00')) for m in matches]
-    return min(dates) if dates else datetime.now()
+    # FIX: Remove 'Z' to make naive UTC time
+    dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '')) for m in matches]
+    return min(dates) if dates else datetime.utcnow()
 
 def calculate_team_results(matches):
     results = {}
@@ -212,7 +199,6 @@ def get_game_settings():
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
-# --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(gw, matches):
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
@@ -316,10 +302,8 @@ def bulk_import_history():
             gw = i + 9
             team_name = fix_team(raw_team)
             used_teams.append(team_name)
-            
             result = 'WIN'
-            if not is_active and i == len(picks) - 1:
-                result = 'LOSS'
+            if not is_active and i == len(picks) - 1: result = 'LOSS'
             
             db.collection('picks').document(f"{name}_GW{gw}").set({
                 'user': name, 'team': team_name, 'matchday': gw, 
@@ -337,7 +321,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     st.subheader("STILL STANDING")
     team_results = calculate_team_results(matches)
     user_pick_map = {p['user']: p['team'] for p in picks}
-    
     crest_map = {}
     for m in matches:
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
@@ -367,14 +350,12 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     for p in active_players:
         name = p['name']
         team = user_pick_map.get(name, None)
-        
         if team:
             if reveal_mode:
                 badge_url = crest_map.get(team, "")
                 result = team_results.get(team, 'PENDING')
                 status_html = ""
                 if result == 'WIN': status_html = '<div class="status-tag-win">THROUGH</div>'
-                
                 mid = f'<img src="{badge_url}" class="pc-badge">{status_html}' if badge_url else '<span class="pc-hidden">⚽</span>'
                 btm = f'<div class="pc-team">{team}</div>'
             else:
@@ -383,7 +364,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         else:
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
-
         active_html += f'<div class="player-card"><div class="pc-name">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
     
     st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
@@ -393,7 +373,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
             elim_html = ""
             for p in eliminated_players:
                 name = p['name']
-                
                 if p.get('pending_elimination'):
                     team = user_pick_map.get(name)
                     badge_url = crest_map.get(team, "")
@@ -405,9 +384,7 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
                     mid = '<span class="pc-hidden" style="opacity:0.5">💀</span>'
                     btm = f'<div class="pc-eliminated-text">OUT GW{gw_out}</div>'
                     card_class = "player-card-eliminated"
-
                 elim_html += f'<div class="{card_class}"><div class="pc-name" style="color:#aaa">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
-                
             st.markdown(f'<div class="player-row-container">{elim_html}</div>', unsafe_allow_html=True)
 
 def display_fixtures_visual(matches):
@@ -436,10 +413,7 @@ def main():
     # --- ADMIN SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin Panel")
-        
-        if 'admin_logged_in' not in st.session_state:
-            st.session_state.admin_logged_in = False
-
+        if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
         if not st.session_state.admin_logged_in:
             pwd = st.text_input("Admin Password", type="password")
             if pwd == ADMIN_PASSWORD:
@@ -449,21 +423,15 @@ def main():
             if st.button("Logout"):
                 st.session_state.admin_logged_in = False
                 st.rerun()
-            
             st.success("✅ Logged In")
             st.divider()
-            
-            real_gw = get_current_gameweek_from_api() 
-            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
-            
-            st.divider()
             if st.button("🔄 ROLLOVER (Everyone Lost)"):
-                msg = admin_reset_game(gw_override, is_rollover=True)
+                msg = admin_reset_game(15, is_rollover=True)
                 st.warning(msg)
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚠️ HARD RESET (New Season)"):
-                msg = admin_reset_game(gw_override, is_rollover=False)
+                msg = admin_reset_game(15, is_rollover=False)
                 st.success(msg)
                 st.cache_data.clear()
                 st.rerun()
@@ -480,22 +448,15 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    # --- HANDLING VARIABLES ---
-    # Default to 15 for your testing session, or override if admin
-    gw = 15
-    if st.session_state.admin_logged_in:
-        try: gw = gw_override
-        except: pass
-    
+    # --- GET REAL GAMEWEEK ---
+    gw = get_current_gameweek_from_api()
     matches = get_matches_for_gameweek(gw)
     
     if not matches:
-        st.warning("No matches found.")
+        st.warning(f"No matches found for Gameweek {gw}.")
         st.stop()
     
-    # --- AUTO ELIMINATION CHECK ---
     auto_process_eliminations(gw, matches)
-    
     all_picks = get_all_picks_for_gw(gw)
     all_players_full = get_all_players_full()
     
@@ -512,18 +473,18 @@ def main():
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
-    now = datetime.now()
-    # Reveal picks if current time > reveal time
+    # FIX: Use Naive UTC for comparison
+    now = datetime.utcnow()
     is_reveal_active = (now > reveal_time)
 
-    # --- 1. METRICS ---
+    # 1. Metrics & Selection
+    st.write("")
     c1, c2 = st.columns(2)
     pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     with c1: st.metric(pot_label, f"£{pot_total}")
     with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
-    # --- 2. SELECTION ---
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
@@ -561,7 +522,6 @@ def main():
                     used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
                     valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
                     available = sorted([t for t in valid if t not in used])
-                    
                     if not available: st.warning("No teams available.")
                     else:
                         with st.form("pick_form"):
@@ -575,16 +535,12 @@ def main():
 
     st.markdown("---")
     
-    # --- CHECK FOR ROLLOVER INCOMING ---
+    # --- ROLLOVER BANNER ---
     active_count = len([p for p in all_players_full if p.get('status') == 'active'])
     if active_count == 0 and len(all_players_full) > 0:
-        st.markdown("""
-        <div class="rollover-banner">
-            💀 GAME OVER: ROLLOVER INCOMING 💀
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("""<div class="rollover-banner">💀 GAME OVER: ROLLOVER INCOMING 💀</div>""", unsafe_allow_html=True)
 
-    # --- 3. STATUS & FIXTURES ---
+    # 2. Status & Fixtures
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
 
