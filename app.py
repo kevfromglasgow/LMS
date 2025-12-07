@@ -24,68 +24,80 @@ ENTRY_FEE = 10
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* 1. BACKGROUND IMAGE FIX */
-        /* We target 'stAppViewContainer' to force the background over the default theme */
+        /* 1. NUCLEAR BACKGROUND FIX */
+        /* Target the main view container with !important to override Streamlit Dark Mode */
         [data-testid="stAppViewContainer"] {
-            background-image: linear-gradient(rgba(10, 10, 10, 0.8), rgba(10, 10, 10, 0.9)), 
-                              url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=2070&auto=format&fit=crop');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
+            background: linear-gradient(rgba(10, 10, 10, 0.8), rgba(10, 10, 10, 0.9)), 
+                        url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=2070&auto=format&fit=crop') !important;
+            background-size: cover !important;
+            background-position: center !important;
+            background-attachment: fixed !important;
+            background-repeat: no-repeat !important;
         }
         
         /* 2. TEXT HEADERS */
-        h1, h2, h3 { 
+        h1, h2, h3, p, div, span { 
+            font-family: 'Helvetica Neue', sans-serif; 
+        }
+        h1, h2, h3 {
             color: #ffffff !important; 
             text-transform: uppercase; 
-            font-family: sans-serif; 
             text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
         
-        /* 3. METRIC CARDS */
+        /* 3. METRIC CARDS (Frosted Glass) */
         div[data-testid="stMetric"] {
-            background-color: rgba(20, 20, 20, 0.85) !important;
-            border: 1px solid rgba(255,255,255,0.1);
-            padding: 15px; 
-            border-radius: 10px; 
-            backdrop-filter: blur(5px);
+            background-color: rgba(20, 20, 20, 0.7) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            padding: 15px !important; 
+            border-radius: 10px !important; 
+            backdrop-filter: blur(10px);
         }
         div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
+        div[data-testid="stMetricValue"] { color: #ffffff !important; }
         
         /* 4. BUTTONS */
         .stButton button {
-            background-color: #38003c !important; color: #00ff87 !important;
-            border: 1px solid #00ff87 !important; font-weight: bold;
+            background-color: #38003c !important; 
+            color: #00ff87 !important;
+            border: 1px solid #00ff87 !important; 
+            font-weight: bold !important;
             box-shadow: 0 0 10px rgba(0, 255, 135, 0.2);
+            transition: all 0.3s ease;
+        }
+        .stButton button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 135, 0.6);
         }
         
-        /* 5. MATCH CARD CSS */
+        /* 5. MATCH CARD CSS (No Indentation Issues) */
         .match-card {
-            background-color: rgba(26, 28, 36, 0.95);
+            background-color: rgba(26, 28, 36, 0.9);
             border-radius: 12px;
-            padding: 10px 15px;
+            padding: 12px 16px;
             margin-bottom: 12px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border: 1px solid #2d2f3a;
+            border: 1px solid rgba(255,255,255,0.05);
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            backdrop-filter: blur(5px);
         }
         .team-container {
             flex: 1; display: flex; align-items: center;
-            font-weight: 600; color: white; font-size: 15px;
+            font-weight: 700; color: white; font-size: 15px; letter-spacing: 0.5px;
         }
         .home-team { justify-content: flex-end; text-align: right; }
         .away-team { justify-content: flex-start; text-align: left; }
-        .crest-img { width: 35px; height: 35px; object-fit: contain; margin: 0 12px; }
+        .crest-img { width: 38px; height: 38px; object-fit: contain; margin: 0 15px; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
         
         .score-box {
-            flex: 0 0 100px; text-align: center;
+            flex: 0 0 110px; text-align: center;
         }
-        .score-text { font-size: 18px; font-weight: bold; color: #00ff87; margin: 0; line-height: 1.2; }
-        .time-text { font-size: 16px; font-weight: bold; color: white; margin: 0; line-height: 1.2; }
-        .status-text { font-size: 11px; color: #aaa; text-transform: uppercase; margin-top: 4px; }
+        .score-text { font-size: 20px; font-weight: 800; color: #00ff87; margin: 0; line-height: 1; }
+        .time-text { font-size: 18px; font-weight: 700; color: white; margin: 0; line-height: 1; }
+        .status-text { font-size: 10px; color: #bbb; text-transform: uppercase; margin-top: 5px; letter-spacing: 1px; }
+        
     </style>
     """, unsafe_allow_html=True)
 
@@ -127,7 +139,7 @@ def display_fixtures_visual(matches):
         status = match['status']
         dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
         
-        # 1. Prepare CENTER content (No extra spaces in strings!)
+        # 1. Prepare CENTER content (Clean strings, no indentation)
         if status == 'FINISHED':
             h_score = match['score']['fullTime']['home']
             a_score = match['score']['fullTime']['away']
@@ -146,7 +158,7 @@ def display_fixtures_visual(matches):
             date_str = dt.strftime("%a %d")
             center_html = f'<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>'
 
-        # 2. Render Card
+        # 2. Render Card (Flush left to avoid code block issues)
         st.markdown(f"""
         <div class="match-card">
             <div class="team-container home-team">
@@ -186,7 +198,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v11', # Version bump
+        'lms_cookie_v12', # Bumped to v12 to force clean login
         'lms_key', 
         cookie_expiry_days=30
     )
