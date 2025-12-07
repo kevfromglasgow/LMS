@@ -137,8 +137,22 @@ def main():
             st.write(f"Logged in as **{name}**")
             authenticator.logout('Logout', 'main')
 
-        st.title("⚽ LAST MAN STANDING")
-        st.markdown("---")
+        with st.sidebar:
+            st.write(f"Logged in as **{name}**")
+            authenticator.logout('Logout', 'main')
+
+        # --- REPLACED TITLE WITH CUSTOM HERO HEADER ---
+        st.markdown("""
+            <div class="hero-container">
+                <div class="hero-title">LAST MAN STANDING</div>
+                <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # (Remove this old line) -> st.title("⚽ LAST MAN STANDING")
+        # (Remove this old line) -> st.markdown("---")
+
+        gw = get_current_gameweek()
 
         gw = get_current_gameweek()
         if not gw: st.stop()
