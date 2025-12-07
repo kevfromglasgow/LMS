@@ -36,7 +36,7 @@ def inject_custom_css():
             background-repeat: no-repeat !important;
         }
 
-        /* 2. HEADERS & TEXT */
+        /* 2. HEADERS */
         .hero-title {
             font-family: 'Teko', sans-serif; font-size: 60px; font-weight: 700;
             text-transform: uppercase; color: #ffffff; letter-spacing: 2px;
@@ -58,23 +58,20 @@ def inject_custom_css():
         div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
         div[data-testid="stMetricValue"] { color: #ffffff !important; }
 
-        /* 4. MATCH CARDS (UPDATED FOR PICKS LIST) */
+        /* 4. MATCH CARDS */
         .match-card {
             background-color: #28002B; border-radius: 12px; padding: 12px 10px;
             margin-bottom: 15px; 
             border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            /* Important: Allow column layout to stack info + picks */
             display: flex; flex-direction: column; 
             transition: transform 0.2s ease;
         }
         .match-card:hover { border-color: #00ff87; transform: translateY(-2px); }
 
-        /* Top Row: The Match Info (Home vs Away) */
         .match-info-row {
             display: flex; align-items: center; justify-content: space-between; width: 100%;
         }
 
-        /* Bottom Row: The Picks List */
         .picks-row {
             display: flex; justify-content: space-between; width: 100%;
             margin-top: 10px; padding-top: 8px;
@@ -105,7 +102,6 @@ def inject_custom_css():
         .time-text { font-size: 16px; font-weight: 700; color: white; margin: 0; line-height: 1; }
         .status-text { font-size: 9px; color: #ddd; text-transform: uppercase; margin-top: 5px; letter-spacing: 1px; font-weight: 600; }
         
-        /* Pick Badges */
         .home-picks { text-align: right; width: 45%; }
         .away-picks { text-align: left; width: 45%; }
         .pick-name { 
@@ -113,7 +109,6 @@ def inject_custom_css():
             display: inline-block;
         }
 
-        /* 5. BUTTONS */
         .stButton button {
             background-color: #28002B !important; color: #ffffff !important;
             border: 1px solid #00ff87 !important; font-weight: 800 !important;
@@ -130,7 +125,6 @@ def inject_custom_css():
 
 # --- 4. HELPER FUNCTIONS ---
 def fetch_users():
-    """Fetches valid users from Firestore"""
     users = {}
     try:
         docs = db.collection('players').stream()
@@ -148,7 +142,6 @@ def fetch_users():
     return users
 
 def get_all_picks_for_gw(gw):
-    """Fetches ALL picks for the week to display on match cards"""
     try:
         picks_ref = db.collection('picks').where('matchday', '==', gw).stream()
         return [p.to_dict() for p in picks_ref]
@@ -186,7 +179,7 @@ def display_fixtures_visual(matches, all_picks, show_picks=False):
         status = match['status']
         dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
         
-        # --- 1. DETERMINE CENTER CONTENT ---
+        # 1. CENTER CONTENT (No spaces!)
         if status == 'FINISHED':
             h, a = match['score']['fullTime']['home'], match['score']['fullTime']['away']
             center_html = f'<div class="score-text">{h} - {a}</div><div class="status-text">FT</div>'
@@ -198,52 +191,43 @@ def display_fixtures_visual(matches, all_picks, show_picks=False):
         else:
             center_html = f'<div class="time-text">{dt.strftime("%H:%M")}</div><div class="status-text">{dt.strftime("%a %d")}</div>'
 
-        # --- 2. PREPARE PICKS LIST (If Revealed) ---
+        # 2. PICKS LIST (No spaces!)
         picks_html = ""
         if show_picks:
-            # Filter picks for this specific match
             home_pickers = [p['user'] for p in all_picks if p['team'] == home['name']]
             away_pickers = [p['user'] for p in all_picks if p['team'] == away['name']]
             
-            # Format list of names (e.g. "Dave, Bob")
             h_str = ", ".join([f"<span class='pick-name'>{u}</span>" for u in home_pickers])
             a_str = ", ".join([f"<span class='pick-name'>{u}</span>" for u in away_pickers])
             
-            # Only show row if there are picks
             if h_str or a_str:
-                picks_html = f"""
-                <div class="picks-row">
-                    <div class="home-picks">{h_str}</div>
-                    <div class="away-picks">{a_str}</div>
-                </div>
-                """
+                picks_html = f'<div class="picks-row"><div class="home-picks">{h_str}</div><div class="away-picks">{a_str}</div></div>'
 
-        # --- 3. RENDER CARD ---
+        # 3. RENDER CARD (Flush left!)
         st.markdown(f"""
-        <div class="match-card">
-            <div class="match-info-row">
-                <div class="team-container home-team">
-                    <span>{home['name']}</span>
-                    <img src="{home['crest']}" class="crest-img">
-                </div>
-                <div class="score-box">
-                    {center_html}
-                </div>
-                <div class="team-container away-team">
-                    <img src="{away['crest']}" class="crest-img">
-                    <span>{away['name']}</span>
-                </div>
-            </div>
-            {picks_html}
-        </div>
-        """, unsafe_allow_html=True)
+<div class="match-card">
+<div class="match-info-row">
+<div class="team-container home-team">
+<span>{home['name']}</span>
+<img src="{home['crest']}" class="crest-img">
+</div>
+<div class="score-box">
+{center_html}
+</div>
+<div class="team-container away-team">
+<img src="{away['crest']}" class="crest-img">
+<span>{away['name']}</span>
+</div>
+</div>
+{picks_html}
+</div>
+""", unsafe_allow_html=True)
 
 # --- 5. MAIN APP LOGIC ---
 def main():
     inject_custom_css()
     users_dict = fetch_users()
 
-    # Admin Sidebar (Hash Gen + Reveal Toggle)
     with st.sidebar:
         st.header("🔧 Admin")
         with st.expander("Hash Gen"):
@@ -251,10 +235,9 @@ def main():
             if p: st.code(bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode())
         
         st.divider()
-        # TOGGLE: Lets you pretend the game is about to start
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
 
-    authenticator = stauth.Authenticate({'usernames': users_dict}, 'lms_cookie_v22', 'lms_key', 30)
+    authenticator = stauth.Authenticate({'usernames': users_dict}, 'lms_cookie_v23', 'lms_key', 30)
 
     if st.session_state["authentication_status"]:
         name = st.session_state["name"]
@@ -276,30 +259,23 @@ def main():
         matches = get_matches_for_gameweek(gw)
         if not matches: st.stop()
         
-        # Fetch picks once for the whole week
         all_picks = get_all_picks_for_gw(gw)
-
-        # PASS THE REVEAL FLAG (simulate_reveal)
         display_fixtures_visual(matches, all_picks, show_picks=simulate_reveal)
         st.write("") 
 
         # --- DEADLINE LOGIC ---
-        # 1. Filter for upcoming games
         upcoming = [m for m in matches if m['status'] == 'SCHEDULED']
         first_kickoff = get_gameweek_deadline(upcoming) if upcoming else get_gameweek_deadline(matches)
         
-        # 2. Manual Override (To keep testing allowed)
-        # Remove this block when you want strict locking
+        # FORCE FUTURE for testing
         now = datetime.now()
         first_kickoff = now + timedelta(days=1)
-        # ----------------------------------------------
-
+        
         deadline = first_kickoff - timedelta(hours=1)
         reveal_time = first_kickoff - timedelta(minutes=30)
         
-        # Override reveal time if Admin Checkbox is checked
         if simulate_reveal:
-            reveal_time = now - timedelta(hours=1) # Force reveal to be in the past
+            reveal_time = now - timedelta(hours=1)
 
         c1, c2 = st.columns(2)
         with c1: st.metric("💰 Prize Pot", f"£{len(users_dict) * ENTRY_FEE}")
@@ -319,13 +295,10 @@ def main():
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
                 used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
-
-                # Relaxed filter for testing
                 valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
                 available = sorted([t for t in valid if t not in used])
 
-                if not available:
-                    st.warning("No teams available.")
+                if not available: st.warning("No teams.")
                 else:
                     with st.form("pick"):
                         choice = st.selectbox("Select Team:", available)
@@ -336,9 +309,6 @@ def main():
                 if used: st.info(f"Used: {', '.join(used)}")
 
         with tab2:
-            # Logic: If current time > reveal time, show picks. Else show "HIDDEN"
-            # Note: The 'simulate_reveal' checkbox forces reveal_time into the past.
-            
             picks_data = []
             for p in all_picks:
                 u, t = p.get('user'), p.get('team')
@@ -356,14 +326,11 @@ def main():
                 <div class="hero-subtitle">LOGIN OR REGISTER</div>
             </div>
         """, unsafe_allow_html=True)
-
         tab_login, tab_register = st.tabs(["Log In", "Sign Up"])
-
         with tab_login:
             authenticator.login('main')
-            if st.session_state["authentication_status"] is False: st.error('Incorrect Password')
+            if st.session_state["authentication_status"] is False: st.error('Incorrect')
             elif st.session_state["authentication_status"] is None: st.warning('Enter details')
-
         with tab_register:
             with st.form("register_form"):
                 st.subheader("Create Account")
