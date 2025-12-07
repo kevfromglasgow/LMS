@@ -76,7 +76,6 @@ def inject_custom_css():
             transform: scale(1.02); box-shadow: 0 0 20px rgba(0, 255, 135, 0.4);
             background-color: #00ff87 !important; color: #1F0022 !important;
         }
-        /* Style text inputs to match dark theme */
         div[data-testid="stTextInput"] input {
             color: white !important;
         }
@@ -127,18 +126,42 @@ def inject_custom_css():
 
 # --- 4. HELPER FUNCTIONS ---
 def fetch_users():
-    """Fetches all users from Firestore to build the Auth dictionary"""
+    """Fetches valid users from Firestore (skips incomplete profiles)"""
     users = {}
-    # Get all documents from 'players' collection
-    docs = db.collection('players').stream()
-    for doc in docs:
-        data = doc.to_dict()
-        # Add to dictionary in the format streamlit-authenticator expects
-        users[doc.id] = {
-            'name': data.get('name'),
-            'password': data.get('password'),
-            'email': data.get('email')
+    try:
+        docs = db.collection('players').stream()
+        for doc in docs:
+            data = doc.to_dict()
+            
+            # Extract fields safely
+            name = data.get('name')
+            password = data.get('password')
+            email = data.get('email')
+            
+            # CRITICAL CHECK: Only add if password exists and is a valid string
+            if password and isinstance(password, str) and len(password) > 0:
+                users[doc.id] = {
+                    'name': name if name else doc.id,
+                    'password': password,
+                    'email': email if email else ''
+                }
+            else:
+                print(f"Skipping incomplete user profile: {doc.id}")
+                
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        
+    # If DB is empty or fails, provide a fallback "admin" so you aren't locked out
+    if not users:
+        users = {
+            'admin': {
+                'name': 'Fallback Admin',
+                # This is the hash for "123"
+                'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW',
+                'email': 'admin@example.com'
+            }
         }
+    
     return users
 
 @st.cache_data(ttl=3600)
@@ -218,7 +241,7 @@ def main():
     # 2. Setup Authenticator
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v17', 
+        'lms_cookie_v18', # Bumped to v18 for clean login
         'lms_key', 
         cookie_expiry_days=30
     )
@@ -254,7 +277,7 @@ def main():
         now = datetime.now(first_kickoff.tzinfo)
 
         c1, c2 = st.columns(2)
-        with c1: st.metric("💰 Prize Pot", f"£{len(users_dict) * ENTRY_FEE}") # Dynamic Prize Pot
+        with c1: st.metric("💰 Prize Pot", f"£{len(users_dict) * ENTRY_FEE}")
         with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
         tab1, tab2 = st.tabs(["🎯 Make Selection", "👀 Opponent Watch"])
@@ -347,7 +370,7 @@ def main():
                             'used_teams': []
                         })
                         st.success("Account created! Please go to 'Log In' tab.")
-                        st.rerun() # Refresh to load the new user into the system
+                        st.rerun() 
 
 if __name__ == "__main__":
     main()
