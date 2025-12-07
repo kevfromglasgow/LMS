@@ -297,7 +297,7 @@ def bulk_import_history():
     return count_players
 
 def display_player_status(picks, matches, players_data, reveal_mode=False):
-    st.subheader("WEEKLY LEADERBOARD")
+    st.subheader("STILL STANDING")
     team_results = calculate_team_results(matches)
     user_pick_map = {p['user']: p['team'] for p in picks}
     
