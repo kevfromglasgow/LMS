@@ -1,0 +1,5 @@
+streamlit
+streamlit-authenticator
+google-cloud-firestore
+requests
+pandas
