@@ -48,35 +48,48 @@ def inject_custom_css():
             color: #00ff87; text-transform: uppercase; letter-spacing: 3px;
             margin-top: 5px; font-weight: 600; text-align: center; margin-bottom: 20px;
         }
-        h1, h2, h3 { color: #ffffff !important; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; }
+        h1, h2, h3 { color: #ffffff !important; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* 3. PLAYER CARDS (Horizontal Scroll/Wrap) */
+        /* 3. PLAYER CARDS (UPDATED: List View) */
         .player-row-container {
             display: flex;
-            flex-wrap: wrap; 
-            justify-content: center;
-            gap: 15px;
+            flex-direction: column; /* Stack vertically like fixtures */
+            gap: 10px;
             margin-bottom: 30px;
-            padding: 10px;
         }
         
         .player-card {
             background-color: #28002B;
             border: 1px solid rgba(0, 255, 135, 0.3);
             border-radius: 12px;
-            width: 110px;
-            padding: 10px;
-            text-align: center;
+            padding: 12px 20px; /* More padding for row look */
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             transition: transform 0.2s;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; /* Spread content out */
+            width: 100%;
         }
-        .player-card:hover { transform: translateY(-3px); border-color: #00ff87; }
+        .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
         
-        .pc-name { font-size: 14px; font-weight: bold; color: #fff; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-        .pc-badge { width: 45px; height: 45px; object-fit: contain; margin: 5px 0; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
-        .pc-team { font-size: 11px; color: #00ff87; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-        .pc-hidden { font-size: 30px; margin: 10px 0; display: block; }
+        /* Left Side: Name */
+        .pc-name { 
+            font-size: 16px; font-weight: 700; color: #fff; 
+            flex: 1; text-align: left;
+        }
+        
+        /* Center: Badge/Icon */
+        .pc-center {
+            flex: 0 0 60px; text-align: center; display: flex; justify-content: center;
+        }
+        .pc-badge { width: 35px; height: 35px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+        .pc-hidden { font-size: 24px; }
+
+        /* Right Side: Team Name */
+        .pc-team { 
+            font-size: 14px; color: #00ff87; font-weight: 600; 
+            flex: 1; text-align: right; text-transform: uppercase;
+        }
 
         /* 4. MATCH CARDS */
         .match-card {
@@ -145,7 +158,8 @@ def get_gameweek_deadline(matches):
     return min(dates) if dates else datetime.now()
 
 def display_player_status(picks, matches, reveal_mode=False):
-    """Displays a row of cards for each player at the top - FIX: FLATTENED HTML STRING"""
+    st.subheader("WEEKLY PICKS") # Added Header
+    
     crest_map = {}
     for m in matches:
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
@@ -166,13 +180,12 @@ def display_player_status(picks, matches, reveal_mode=False):
             mid = '<span class="pc-hidden">🔒</span>'
             btm = '<div class="pc-team">HIDDEN</div>'
 
-        # CRITICAL FIX: No newlines or indentation in the f-string
-        cards_html += f'<div class="player-card"><div class="pc-name">{user}</div>{mid}{btm}</div>'
+        # Row Layout: Name | Badge | Team
+        cards_html += f'<div class="player-card"><div class="pc-name">{user}</div><div class="pc-center">{mid}</div>{btm}</div>'
         
     if not cards_html:
         st.info("No selections made for this gameweek yet.")
     else:
-        # Render container
         st.markdown(f'<div class="player-row-container">{cards_html}</div>', unsafe_allow_html=True)
 
 def display_fixtures_visual(matches):
@@ -192,7 +205,6 @@ def display_fixtures_visual(matches):
         else:
             center_html = f'<div class="time-text">{dt.strftime("%H:%M")}</div><div class="status-text">{dt.strftime("%a %d")}</div>'
 
-        # CRITICAL FIX: No newlines or indentation here either
         st.markdown(f'<div class="match-card"><div class="match-info-row"><div class="team-container home-team"><span>{home["name"]}</span><img src="{home["crest"]}" class="crest-img"></div><div class="score-box">{center_html}</div><div class="team-container away-team"><img src="{away["crest"]}" class="crest-img"><span>{away["name"]}</span></div></div></div>', unsafe_allow_html=True)
 
 # --- 5. MAIN APP LOGIC ---
@@ -207,7 +219,7 @@ def main():
             p = st.text_input("Pass:", type="password")
             if p: st.code(bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode())
 
-    authenticator = stauth.Authenticate({'usernames': users_dict}, 'lms_cookie_v25', 'lms_key', 30)
+    authenticator = stauth.Authenticate({'usernames': users_dict}, 'lms_cookie_v26', 'lms_key', 30)
 
     if st.session_state["authentication_status"]:
         with st.sidebar:
@@ -226,7 +238,6 @@ def main():
         matches = get_matches_for_gameweek(gw)
         if not matches: st.stop()
         
-        # --- PLAYER STATUS ROW ---
         all_picks = get_all_picks_for_gw(gw)
         
         # TESTING DEADLINE LOGIC
