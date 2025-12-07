@@ -116,10 +116,15 @@ def inject_custom_css():
         /* EXPANDER STYLING */
         .streamlit-expanderHeader {
             background-color: #28002B !important;
-            color: #ff4b4b !important; /* Red text for The Fallen */
+            color: #ffffff !important;
             font-weight: 800 !important;
             border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 8px !important;
+        }
+        
+        /* Radio Button Styling Override */
+        div[role="radiogroup"] > label > div:first-of-type {
+            background-color: #28002B !important;
         }
         
         /* ROLLOVER BANNER */
@@ -176,6 +181,7 @@ def get_matches_for_gameweek(gw):
     except: return []
 
 def get_gameweek_deadline(matches):
+    # FIX: Remove 'Z' to make naive UTC time
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '')) for m in matches]
     return min(dates) if dates else datetime.utcnow()
 
@@ -199,7 +205,6 @@ def get_game_settings():
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
-# --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(gw, matches):
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
@@ -329,7 +334,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         
     active_players = []
     eliminated_players = []
-    
     for p in players_data:
         name = p['name']
         status = p.get('status')
@@ -351,7 +355,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     for p in active_players:
         name = p['name']
         team = user_pick_map.get(name, None)
-        
         if team:
             if reveal_mode:
                 badge_url = crest_map.get(team, "")
@@ -366,7 +369,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         else:
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
-
         active_html += f'<div class="player-card"><div class="pc-name">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
     
     st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
@@ -416,10 +418,7 @@ def main():
     # --- ADMIN SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin Panel")
-        
-        if 'admin_logged_in' not in st.session_state:
-            st.session_state.admin_logged_in = False
-
+        if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
         if not st.session_state.admin_logged_in:
             pwd = st.text_input("Admin Password", type="password")
             if pwd == ADMIN_PASSWORD:
@@ -429,9 +428,7 @@ def main():
             if st.button("Logout"):
                 st.session_state.admin_logged_in = False
                 st.rerun()
-            
             st.success("✅ Logged In")
-            simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
             st.divider()
             
             real_gw = get_current_gameweek_from_api() 
@@ -463,17 +460,11 @@ def main():
     
     # --- HANDLING VARIABLES ---
     gw = 15
-    sim_reveal = False
-    
     if st.session_state.admin_logged_in:
-        try:
-            gw = gw_override
-            sim_reveal = simulate_reveal
-        except NameError:
-            pass 
+        try: gw = gw_override
+        except NameError: pass 
     
     matches = get_matches_for_gameweek(gw)
-    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -497,12 +488,7 @@ def main():
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
-    # FIX: Use Naive UTC for comparison
     now = datetime.utcnow()
-    
-    # Override for Admin Simulation
-    if sim_reveal: reveal_time = now - timedelta(hours=1)
-        
     is_reveal_active = (now > reveal_time)
 
     # 1. Metrics & Selection
@@ -518,9 +504,12 @@ def main():
 
     active_names = sorted([p['name'] for p in all_players_full])
     options = ["Select your name...", "➕ I am a New Player"] + active_names
-    selected_option = st.selectbox("Who are you?", options)
+    
+    # MOBILE FIX: Use Expander + Radio for selection
+    with st.expander("👤 Tap to select your name", expanded=False):
+        selected_option = st.radio("List of Players:", options, label_visibility="collapsed")
+    
     actual_user_name = None
-
     if selected_option == "➕ I am a New Player":
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
@@ -533,17 +522,14 @@ def main():
     if actual_user_name:
         user_ref = db.collection('players').document(actual_user_name)
         user_doc = user_ref.get()
-        
         if user_doc.exists and user_doc.to_dict().get('status') == 'eliminated':
             st.error(f"❌ Sorry {actual_user_name}, you have been eliminated!")
             st.info("Wait for a new game to start to rejoin.")
         else:
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
-            existing_pick = pick_ref.get()
-
-            if existing_pick.exists:
-                # SAFE: Just show a generic message
+            if pick_ref.get().exists:
+                # SAFE: Generic message to prevent snooping
                 st.success(f"✅ {actual_user_name} has already made a selection for Gameweek {gw}.")
                 st.caption("See the 'Still Standing' list below for details (picks revealed 30 mins before kick-off).")
             else:
@@ -553,7 +539,6 @@ def main():
                     used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
                     valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
                     available = sorted([t for t in valid if t not in used])
-                    
                     if not available: st.warning("No teams available.")
                     else:
                         with st.form("pick_form"):
