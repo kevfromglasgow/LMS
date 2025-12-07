@@ -15,7 +15,7 @@ except Exception as e:
     st.error(f"Error connecting to secrets or database: {e}")
     st.stop()
 
-PL_COMPETITION_ID = 2021  # Premier League ID
+PL_COMPETITION_ID = 2021
 ENTRY_FEE = 10
 
 # --- 3. CUSTOM CSS ---
@@ -24,7 +24,6 @@ def inject_custom_css():
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&display=swap');
         
-        /* 1. BACKGROUND */
         [data-testid="stAppViewContainer"] {
             background: linear-gradient(rgba(31, 0, 34, 0.85), rgba(31, 0, 34, 0.95)), 
                         url('https://images.unsplash.com/photo-1693517393451-a71a593c9870?q=80&w=1770&auto=format&fit=crop') !important;
@@ -34,7 +33,6 @@ def inject_custom_css():
             background-repeat: no-repeat !important;
         }
 
-        /* 2. HEADERS */
         .hero-title {
             font-family: 'Teko', sans-serif; font-size: 60px; font-weight: 700;
             text-transform: uppercase; color: #ffffff; letter-spacing: 2px;
@@ -48,7 +46,6 @@ def inject_custom_css():
         }
         h1, h2, h3 { color: #ffffff !important; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* 3. PLAYER CARDS */
         .player-row-container {
             display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
@@ -60,26 +57,15 @@ def inject_custom_css():
         .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
         
         .pc-name { font-size: 16px; font-weight: 700; color: #fff; flex: 1; text-align: left; }
-        
-        .pc-center { 
-            flex: 0 0 100px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; 
-        }
+        .pc-center { flex: 0 0 100px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .pc-badge { width: 35px; height: 35px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
         
-        /* STATUS BADGES */
-        .status-tag-win { 
-            font-size: 10px; background: #00ff87; color: #1F0022; padding: 2px 6px; 
-            border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px;
-        }
-        .status-tag-loss { 
-            font-size: 10px; background: #ff4b4b; color: white; padding: 2px 6px; 
-            border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px;
-        }
+        .status-tag-win { font-size: 10px; background: #00ff87; color: #1F0022; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px; }
+        .status-tag-loss { font-size: 10px; background: #ff4b4b; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px; }
         
         .pc-hidden { font-size: 24px; }
         .pc-team { font-size: 14px; color: #00ff87; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
 
-        /* 4. MATCH CARDS */
         .match-card {
             background-color: #28002B; border-radius: 12px; padding: 12px 10px;
             margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
@@ -98,21 +84,12 @@ def inject_custom_css():
         .time-text { font-size: 16px; font-weight: 700; color: white; line-height: 1; }
         .status-text { font-size: 9px; color: #ddd; text-transform: uppercase; margin-top: 5px; font-weight: 600; }
         
-        /* 5. METRIC CARDS */
         div[data-testid="stMetric"] { background-color: #28002B !important; border-radius: 10px; padding: 10px !important; }
         div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
         div[data-testid="stMetricValue"] { color: #ffffff !important; }
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
-        
-        /* --- FIX: INPUT TEXT COLOR --- */
-        /* Forces input text to be WHITE so it is visible against dark background */
-        input[type="text"] { 
-            color: #ffffff !important; 
-            font-weight: bold; 
-            background-color: rgba(255,255,255,0.1) !important;
-            border: 1px solid #00ff87 !important;
-        }
+        input[type="text"] { color: #ffffff !important; font-weight: bold; background-color: rgba(255,255,255,0.1) !important; border: 1px solid #00ff87 !important; }
         
         @media (max-width: 600px) {
             .team-container { font-size: 12px; }
@@ -124,12 +101,11 @@ def inject_custom_css():
 
 # --- 4. HELPER FUNCTIONS ---
 def get_all_players_from_db():
-    """Fetch all unique player IDs (Names) from the database"""
     try:
         docs = db.collection('players').stream()
+        # Only return players who are NOT eliminated? No, let's show everyone, logic handles blocking.
         return sorted([doc.id for doc in docs])
-    except:
-        return []
+    except: return []
 
 def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
@@ -152,25 +128,44 @@ def get_gameweek_deadline(matches):
     return min(dates) if dates else datetime.now()
 
 def calculate_team_results(matches):
-    """Returns a dict: {'TeamName': 'WIN' | 'LOSE' | 'PENDING'}"""
     results = {}
     for m in matches:
         home, away = m['homeTeam']['name'], m['awayTeam']['name']
         if m['status'] == 'FINISHED':
-            h_score, a_score = m['score']['fullTime']['home'], m['score']['fullTime']['away']
-            if h_score > a_score:
-                results[home] = 'WIN'
-                results[away] = 'LOSE'
-            elif a_score > h_score:
-                results[away] = 'WIN'
-                results[home] = 'LOSE'
-            else:
-                results[home] = 'LOSE'
-                results[away] = 'LOSE'
+            h, a = m['score']['fullTime']['home'], m['score']['fullTime']['away']
+            if h > a: results.update({home:'WIN', away:'LOSE'})
+            elif a > h: results.update({away:'WIN', home:'LOSE'})
+            else: results.update({home:'LOSE', away:'LOSE'}) # Draw = Loss
         else:
-            results[home] = 'PENDING'
-            results[away] = 'PENDING'
+            results.update({home:'PENDING', away:'PENDING'})
     return results
+
+def admin_eliminate_losers(gw, matches):
+    """Admin function to update player status based on results"""
+    team_results = calculate_team_results(matches)
+    picks = get_all_picks_for_gw(gw)
+    count = 0
+    
+    for p in picks:
+        user = p['user']
+        team = p['team']
+        result = team_results.get(team, 'PENDING')
+        
+        if result == 'LOSE':
+            # Update player status to eliminated
+            db.collection('players').document(user).update({'status': 'eliminated'})
+            count += 1
+    return count
+
+def admin_reset_game():
+    """Resets all players to active and clears used teams"""
+    docs = db.collection('players').stream()
+    for doc in docs:
+        db.collection('players').document(doc.id).update({
+            'status': 'active',
+            'used_teams': []
+        })
+    # Optional: Delete all picks? Usually better to just archive them or ignore old ones.
 
 def display_player_status(picks, matches, reveal_mode=False):
     st.subheader("WEEKLY PICKS")
@@ -186,9 +181,16 @@ def display_player_status(picks, matches, reveal_mode=False):
     for p in sorted_picks:
         user = p.get('user', 'Unknown')
         team = p.get('team', 'Unknown')
-        is_visible = reveal_mode
         
-        if is_visible:
+        # Check if player is eliminated in DB (to show visually)
+        player_doc = db.collection('players').document(user).get()
+        is_eliminated = player_doc.exists and player_doc.to_dict().get('status') == 'eliminated'
+        
+        if is_eliminated:
+            # Eliminated Visualization
+            mid = '<span class="pc-hidden">❌</span>'
+            btm = '<div class="pc-team" style="color:red;">ELIMINATED</div>'
+        elif reveal_mode:
             badge_url = crest_map.get(team, "")
             result = team_results.get(team, 'PENDING')
             status_html = ""
@@ -229,10 +231,32 @@ def display_fixtures_visual(matches):
 def main():
     inject_custom_css()
 
+    gw = get_current_gameweek()
+    if not gw: st.stop()
+    matches = get_matches_for_gameweek(gw)
+    if not matches: st.stop()
+
+    # --- ADMIN SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin")
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
-        st.info("No login required.")
+        
+        st.divider()
+        st.subheader("Game Controls")
+        
+        # 1. Eliminate Losers Button
+        if st.button("💀 Eliminate Losers (Current GW)"):
+            count = admin_eliminate_losers(gw, matches)
+            st.success(f"Processed! {count} players eliminated.")
+            st.cache_data.clear() # Clear cache to refresh UI
+            st.rerun()
+
+        # 2. Reset Game Button
+        if st.button("🔄 Start New Game (Reset All)"):
+            admin_reset_game()
+            st.success("Game Reset! All players are active.")
+            st.cache_data.clear()
+            st.rerun()
 
     st.markdown("""
         <div class="hero-container">
@@ -240,15 +264,11 @@ def main():
             <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
         </div>
     """, unsafe_allow_html=True)
-
-    gw = get_current_gameweek()
-    if not gw: st.stop()
-    matches = get_matches_for_gameweek(gw)
-    if not matches: st.stop()
     
     all_picks = get_all_picks_for_gw(gw)
     existing_players = get_all_players_from_db() 
     
+    # DEADLINE LOGIC (Testing Mode)
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
@@ -278,45 +298,46 @@ def main():
         if new_name_input:
             clean_name = new_name_input.strip().title()
             if clean_name in existing_players:
-                st.error(f"'{clean_name}' already exists! Please select it from the dropdown above.")
+                st.error(f"'{clean_name}' already exists!")
             else:
                 actual_user_name = clean_name
     elif selected_option != "Select your name...":
         actual_user_name = selected_option
 
     if actual_user_name:
-        pick_id = f"{actual_user_name}_GW{gw}"
-        pick_ref = db.collection('picks').document(pick_id)
-        existing_pick = pick_ref.get()
-
-        if existing_pick.exists:
-            team = existing_pick.to_dict().get('team')
-            st.success(f"✅ Pick confirmed for **{actual_user_name}**: **{team}**")
-            st.caption("To change this pick, please contact the admin.")
+        # --- BLOCKING LOGIC ---
+        user_ref = db.collection('players').document(actual_user_name)
+        user_doc = user_ref.get()
+        
+        # Check Status
+        if user_doc.exists and user_doc.to_dict().get('status') == 'eliminated':
+            st.error(f"❌ Sorry {actual_user_name}, you have been eliminated!")
+            st.info("Wait for a new game to start to rejoin.")
         else:
-            user_ref = db.collection('players').document(actual_user_name)
-            user_doc = user_ref.get()
-            used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
+            # Proceed with normal selection
+            pick_id = f"{actual_user_name}_GW{gw}"
+            pick_ref = db.collection('picks').document(pick_id)
+            existing_pick = pick_ref.get()
 
-            valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
-            available = sorted([t for t in valid if t not in used])
-
-            if not available: 
-                st.warning("No teams available.")
+            if existing_pick.exists:
+                team = existing_pick.to_dict().get('team')
+                st.success(f"✅ Pick confirmed for **{actual_user_name}**: **{team}**")
+                st.caption("Contact admin to change.")
             else:
-                with st.form("pick_form"):
-                    team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
-                    if st.form_submit_button("SUBMIT PICK"):
-                        pick_ref.set({
-                            'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()
-                        })
-                        user_ref.set({
-                            'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'
-                        }, merge=True)
-                        st.success(f"✅ Pick Locked In for {actual_user_name}!")
-                        st.rerun()
-            
-            if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
+                used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
+                valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
+                available = sorted([t for t in valid if t not in used])
+
+                if not available: st.warning("No teams available.")
+                else:
+                    with st.form("pick_form"):
+                        team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
+                        if st.form_submit_button("SUBMIT PICK"):
+                            pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
+                            user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
+                            st.success(f"✅ Pick Locked In for {actual_user_name}!")
+                            st.rerun()
+                if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
 
 if __name__ == "__main__":
     main()
