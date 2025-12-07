@@ -49,22 +49,18 @@ def inject_custom_css():
         .player-row-container {
             display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
-        
-        /* ACTIVE CARD STYLE */
+        /* Active Card */
         .player-card {
             background-color: #28002B; border: 1px solid rgba(0, 255, 135, 0.3); border-radius: 12px;
             padding: 12px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s;
             display: flex; align-items: center; justify-content: space-between; width: 100%;
         }
         .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
-
-        /* ELIMINATED CARD STYLE */
+        
+        /* Eliminated Card */
         .player-card-eliminated {
-            background-color: #1a1a1a; /* Grey/Black */
-            border: 1px solid #444; 
-            border-radius: 12px;
-            padding: 10px 20px; 
-            display: flex; align-items: center; justify-content: space-between; width: 100%;
+            background-color: #1a1a1a; border: 1px solid #444; border-radius: 12px;
+            padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; width: 100%;
             opacity: 0.8;
         }
         
@@ -114,7 +110,6 @@ def inject_custom_css():
 
 # --- 4. HELPER FUNCTIONS ---
 def get_all_players_full():
-    """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -130,7 +125,7 @@ def get_current_gameweek_from_api():
     try:
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         return r.json()['matches'][0]['matchday'] if r.json()['matches'] else 38
-    except: return 15 # Fallback
+    except: return 15
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
@@ -157,30 +152,66 @@ def calculate_team_results(matches):
             results.update({home:'PENDING', away:'PENDING'})
     return results
 
-def admin_eliminate_losers(gw, matches):
+def get_game_settings():
+    doc = db.collection('settings').document('config').get()
+    return doc.to_dict() if doc.exists else {'rollover_multiplier': 1}
+
+def update_game_settings(multiplier):
+    db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
+
+# --- 🚀 NEW AUTOMATIC ELIMINATION FUNCTION ---
+def auto_process_eliminations(gw, matches):
+    """
+    Runs on page load. Checks if any active player picked a losing team.
+    If so, updates DB status to 'eliminated' immediately.
+    """
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
-    count = 0
+    
+    updates_made = False
+    
     for p in picks:
         user = p['user']
         team = p['team']
+        
+        # Get result for the team
         result = team_results.get(team, 'PENDING')
+        
         if result == 'LOSE':
-            # Mark as eliminated AND save which week it happened
-            db.collection('players').document(user).update({
-                'status': 'eliminated',
-                'eliminated_gw': gw
-            })
-            count += 1
-    return count
+            # Check if player is already eliminated to avoid redundant writes
+            player_ref = db.collection('players').document(user)
+            player_data = player_ref.get()
+            
+            if player_data.exists:
+                current_status = player_data.to_dict().get('status')
+                
+                # If they are Active but Lost -> KILL THEM
+                if current_status == 'active':
+                    player_ref.update({
+                        'status': 'eliminated',
+                        'eliminated_gw': gw
+                    })
+                    updates_made = True
+                    print(f"AUTO-ELIMINATED: {user}")
 
-def admin_reset_game(current_gw):
+    # If we eliminated someone, we rerun the app so the UI updates instantly
+    if updates_made:
+        st.cache_data.clear()
+        st.rerun()
+
+def admin_reset_game(current_gw, is_rollover=False):
     docs = db.collection('players').stream()
     for doc in docs:
         db.collection('players').document(doc.id).update({'status': 'active', 'used_teams': [], 'eliminated_gw': None})
     picks = db.collection('picks').where('matchday', '==', current_gw).stream()
     for pick in picks:
         db.collection('picks').document(pick.id).delete()
+
+    current_settings = get_game_settings()
+    current_mult = current_settings.get('rollover_multiplier', 1)
+    new_mult = current_mult + 1 if is_rollover else 1
+    update_game_settings(new_mult)
+    return "ROLLOVER!" if is_rollover else "RESET!"
 
 def bulk_import_history():
     def fix_team(t):
@@ -241,31 +272,16 @@ def bulk_import_history():
     for name, picks in RAW_DATA.items():
         is_active = (len(picks) == 7)
         status = 'active' if is_active else 'eliminated'
-        # Week 1 = GW9. So if they lost week 1, eliminated_gw = 9.
-        # Week 7 = GW15.
         eliminated_gw = (len(picks) + 8) if not is_active else None 
-        
         used_teams = []
         for i, raw_team in enumerate(picks):
-            # OFFSET: Week 1 is GW9, Week 7 is GW15
             gw = i + 9
             team_name = fix_team(raw_team)
             used_teams.append(team_name)
-            
             result = 'WIN'
-            if not is_active and i == len(picks) - 1:
-                result = 'LOSS'
-            
-            db.collection('picks').document(f"{name}_GW{gw}").set({
-                'user': name, 'team': team_name, 'matchday': gw, 
-                'timestamp': datetime.now(), 'result': result
-            })
-
-        db.collection('players').document(name).set({
-            'name': name, 'status': status, 'used_teams': used_teams, 
-            'eliminated_gw': eliminated_gw,
-            'email': '', 'password': ''
-        })
+            if not is_active and i == len(picks) - 1: result = 'LOSS'
+            db.collection('picks').document(f"{name}_GW{gw}").set({'user': name, 'team': team_name, 'matchday': gw, 'timestamp': datetime.now(), 'result': result})
+        db.collection('players').document(name).set({'name': name, 'status': status, 'used_teams': used_teams, 'eliminated_gw': eliminated_gw, 'email': '', 'password': ''})
         count_players += 1
     return count_players
 
@@ -291,12 +307,10 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     active_players.sort(key=lambda x: x['name'])
     eliminated_players.sort(key=lambda x: x.get('eliminated_gw', 0), reverse=True)
 
-    # ACTIVE LIST
     active_html = ""
     for p in active_players:
         name = p['name']
         team = user_pick_map.get(name, None)
-        
         if team:
             if reveal_mode:
                 badge_url = crest_map.get(team, "")
@@ -304,7 +318,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
                 status_html = ""
                 if result == 'WIN': status_html = '<div class="status-tag-win">THROUGH</div>'
                 elif result == 'LOSE': status_html = '<div class="status-tag-loss">OUT</div>'
-                
                 mid = f'<img src="{badge_url}" class="pc-badge">{status_html}' if badge_url else '<span class="pc-hidden">⚽</span>'
                 btm = f'<div class="pc-team">{team}</div>'
             else:
@@ -313,12 +326,10 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         else:
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
-
         active_html += f'<div class="player-card"><div class="pc-name">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
     
     st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
 
-    # ELIMINATED LIST
     if eliminated_players:
         st.markdown("### 🪦 THE FALLEN")
         elim_html = ""
@@ -328,7 +339,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
             mid = '<span class="pc-hidden" style="opacity:0.5">💀</span>'
             btm = f'<div class="pc-eliminated-text">OUT GW{gw_out}</div>'
             elim_html += f'<div class="player-card-eliminated"><div class="pc-name" style="color:#888">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
-            
         st.markdown(f'<div class="player-row-container">{elim_html}</div>', unsafe_allow_html=True)
 
 def display_fixtures_visual(matches):
@@ -354,27 +364,22 @@ def display_fixtures_visual(matches):
 def main():
     inject_custom_css()
 
-    # --- ADMIN SIDEBAR ---
+    # Admin Sidebar
     with st.sidebar:
         st.header("🔧 Admin")
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
         st.divider()
-        
         real_gw = get_current_gameweek_from_api() 
-        # Default to 15 based on your request, but allow sliding
         gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
-        
         st.divider()
-        if st.button("💀 Eliminate Losers (Current GW)"):
-            gw = gw_override
-            m = get_matches_for_gameweek(gw)
-            count = admin_eliminate_losers(gw, m)
-            st.success(f"Processed! {count} players eliminated.")
-            st.cache_data.clear() 
+        if st.button("🔄 ROLLOVER (Everyone Lost)"):
+            msg = admin_reset_game(gw_override, is_rollover=True)
+            st.warning(msg)
+            st.cache_data.clear()
             st.rerun()
-        if st.button("🔄 Start New Game (Reset All)"):
-            admin_reset_game(gw_override)
-            st.success("Game Reset!")
+        if st.button("⚠️ HARD RESET (New Season)"):
+            msg = admin_reset_game(gw_override, is_rollover=False)
+            st.success(msg)
             st.cache_data.clear()
             st.rerun()
         if st.button("⚡ Inject Spreadsheet Data (GW9-15)"):
@@ -397,11 +402,16 @@ def main():
         st.warning("No matches found.")
         st.stop()
     
-    all_picks = get_all_picks_for_gw(gw)
-    all_players_full = get_all_players_full()
+    # --- AUTO ELIMINATION CHECK ---
+    auto_process_eliminations(gw, matches)
+    # ------------------------------
     
-    # DEADLINE LOGIC
-    # FORCE FUTURE DATE FOR TESTING
+    all_picks = get_all_picks_for_gw(gw)
+    all_players_full = get_all_players_from_db()
+    
+    settings = get_game_settings()
+    multiplier = settings.get('rollover_multiplier', 1)
+    
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
@@ -413,20 +423,19 @@ def main():
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
     
-    # Active Player Count for Pot
     active_count = len([p for p in all_players_full if p.get('status') == 'active'])
+    pot_total = active_count * ENTRY_FEE * multiplier
     
     st.write("")
     c1, c2 = st.columns(2)
-    with c1: st.metric("💰 Prize Pot", f"£{active_count * ENTRY_FEE}")
+    pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
+    with c1: st.metric(pot_label, f"£{pot_total}")
     with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # Only show names in dropdown for Active + New users
-    # Sort names alphabetically
-    active_names = sorted([p['name'] for p in all_players_full]) # Show all for now so eliminated can see their status msg
+    active_names = sorted([p['name'] for p in all_players_full])
     options = ["Select your name...", "➕ I am a New Player"] + active_names
     selected_option = st.selectbox("Who are you?", options)
     actual_user_name = None
