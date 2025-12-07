@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
-import bcrypt
 from datetime import datetime, timedelta
 import requests
 from google.cloud import firestore
 import streamlit_authenticator as stauth
-from streamlit_authenticator.utilities.hasher import Hasher
+import bcrypt  # Needed for the Admin Hash Generator
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Last Man Standing", layout="wide")
@@ -65,16 +64,15 @@ def main():
                 # Generate hash using bcrypt directly (More reliable)
                 hashed_bytes = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt())
                 hashed_pw = hashed_bytes.decode('utf-8')
-                
                 st.code(hashed_pw, language="text")
                 st.caption("Copy this hash and paste it into 'users_dict' in app.py")
-                
+
     # --- AUTHENTICATION SETUP ---
-    # REPLACE THE HASH BELOW with the one you generate in the sidebar!
+    # Update this dictionary with your friends' details
     users_dict = {
         'jdoe': {
             'name': 'John Doe',
-            'password': '$2b$12$j3DjWOCR01yKjDVqpG2sy.K8ZULR2/5ub2OdwdifiO5oLKQadfnNW', # Default: "abc"
+            'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', # Default: "abc"
             'email': 'jdoe@gmail.com'
         }
     }
@@ -124,11 +122,26 @@ def main():
 
         # --- TAB 1: USER SELECTION ---
         with tab1:
-            st.subheader(f"Gameweek {matches[0]['matchday']}")
+            gw = matches[0]['matchday']
+            st.subheader(f"Gameweek {gw}")
             
-            if current_time > deadline:
-                st.error(f"🚫 Gameweek Locked. Deadline was {deadline.strftime('%H:%M')}")
+            # 1. Check if user has ALREADY picked for this specific week
+            pick_id = f"{username}_GW{gw}"
+            current_pick_ref = db.collection('picks').document(pick_id)
+            current_pick_doc = current_pick_ref.get()
+            
+            if current_pick_doc.exists:
+                # --- STATE A: ALREADY PICKED ---
+                saved_pick = current_pick_doc.to_dict().get('team')
+                st.success(f"✅ You have selected **{saved_pick}** for Gameweek {gw}.")
+                st.info("Your pick is locked in. Good luck!")
+                
+            elif current_time > deadline:
+                # --- STATE B: DEADLINE PASSED, NO PICK ---
+                st.error(f"🚫 Gameweek Locked. You missed the deadline ({deadline.strftime('%H:%M')}).")
+            
             else:
+                # --- STATE C: OPEN TO PICK ---
                 st.info(f"⏳ Deadline: {deadline.strftime('%A %d %b at %H:%M')}")
                 
                 # Fetch user's history from Firestore
@@ -157,10 +170,7 @@ def main():
                         
                         if submitted:
                             # 1. Save Pick to 'picks' collection
-                            gw = matches[0]['matchday']
-                            pick_id = f"{username}_GW{gw}"
-                            
-                            db.collection('picks').document(pick_id).set({
+                            current_pick_ref.set({
                                 'user': username,
                                 'team': choice,
                                 'matchday': gw,
@@ -178,7 +188,7 @@ def main():
 
                 # Show History
                 if used_teams:
-                    st.write("---")
+                    st.divider()
                     st.caption(f"Teams you have already used: {', '.join(used_teams)}")
 
         # --- TAB 2: OPPONENT WATCH ---
@@ -196,6 +206,7 @@ def main():
                 pick_team = p.get('team', 'Unknown')
                 
                 # Visibility Logic
+                # If it's too early AND it's not me, hide the team
                 if current_time < reveal_time and pick_user != username:
                     display_team = "HIDDEN 🔒"
                 else:
