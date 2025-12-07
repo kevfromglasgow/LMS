@@ -1,9 +1,9 @@
 /* --- screen.css --- */
 
-/* 1. NUCLEAR BACKGROUND FIX */
-/* Forces the stadium background over Streamlit's default dark mode */
+/* 1. BACKGROUND COLOR (Your Custom Purple #1F0022) */
 [data-testid="stAppViewContainer"] {
-    background: linear-gradient(rgba(10, 10, 10, 0.6), rgba(10, 10, 10, 0.8)), 
+    /* We use RGBA based on your hex 1F0022 (31, 0, 34) to create the overlay */
+    background: linear-gradient(rgba(31, 0, 34, 0.85), rgba(31, 0, 34, 0.95)), 
                 url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=2070&auto=format&fit=crop') !important;
     background-size: cover !important;
     background-position: center !important;
@@ -11,7 +11,7 @@
     background-repeat: no-repeat !important;
 }
 
-/* 2. TEXT HEADERS */
+/* 2. TEXT HEADERS (White) */
 h1, h2, h3, p, div, span { 
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
 }
@@ -20,21 +20,20 @@ h1, h2, h3 {
     color: #ffffff !important; 
     text-transform: uppercase; 
     letter-spacing: 1px;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
 }
 
-/* 3. METRIC CARDS (The Prize Pot) */
+/* 3. METRIC CARDS */
 div[data-testid="stMetric"] {
-    background-color: rgba(20, 20, 20, 0.7) !important;
+    background-color: #28002B !important; /* Your Card Color */
     border: 1px solid rgba(255,255,255,0.1) !important;
     padding: 15px !important; 
     border-radius: 10px !important; 
-    backdrop-filter: blur(10px); /* Frosted glass effect */
     box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 }
 
 div[data-testid="stMetricLabel"] { 
-    color: #00ff87 !important; /* Neon Green */
+    color: #00ff87 !important; /* Keep Neon Green for contrast? Or change to white if preferred */
 }
 
 div[data-testid="stMetricValue"] { 
@@ -43,26 +42,26 @@ div[data-testid="stMetricValue"] {
 
 /* 4. BUTTONS */
 .stButton button {
-    background-color: #38003c !important; /* PL Purple */
-    color: #00ff87 !important;
+    background-color: #28002B !important; 
+    color: #ffffff !important;
     border: 1px solid #00ff87 !important; 
     font-weight: 800 !important;
     text-transform: uppercase;
     letter-spacing: 1px;
-    box-shadow: 0 0 10px rgba(0, 255, 135, 0.2);
+    box-shadow: 0 0 10px rgba(0, 255, 135, 0.1);
     transition: all 0.3s ease;
 }
 
 .stButton button:hover {
     transform: scale(1.02);
-    box-shadow: 0 0 20px rgba(0, 255, 135, 0.6);
+    box-shadow: 0 0 20px rgba(0, 255, 135, 0.4);
     background-color: #00ff87 !important;
-    color: #38003c !important;
+    color: #1F0022 !important;
 }
 
-/* 5. MATCH CARDS (The Floating Rows) */
+/* 5. MATCH CARDS */
 .match-card {
-    background-color: rgba(26, 28, 36, 0.9);
+    background-color: #28002B; /* Your requested card color */
     border-radius: 12px;
     padding: 12px 16px;
     margin-bottom: 12px;
@@ -71,12 +70,11 @@ div[data-testid="stMetricValue"] {
     justify-content: space-between;
     border: 1px solid rgba(255,255,255,0.05);
     box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    backdrop-filter: blur(5px);
     transition: transform 0.2s ease;
 }
 
 .match-card:hover {
-    border-color: #00ff87; /* Green border on hover */
+    border-color: #00ff87;
     transform: translateY(-2px);
 }
 
@@ -85,7 +83,7 @@ div[data-testid="stMetricValue"] {
     display: flex; 
     align-items: center;
     font-weight: 700; 
-    color: white; 
+    color: white; /* Text White */
     font-size: 15px; 
     letter-spacing: 0.5px;
 }
@@ -112,6 +110,10 @@ div[data-testid="stMetricValue"] {
 .score-box {
     flex: 0 0 110px; 
     text-align: center;
+    background-color: #1F0022; /* Your requested background behind scores */
+    border-radius: 8px;
+    padding: 5px 0;
+    border: 1px solid rgba(255,255,255,0.05);
 }
 
 .score-text { 
@@ -132,7 +134,7 @@ div[data-testid="stMetricValue"] {
 
 .status-text { 
     font-size: 10px; 
-    color: #bbb; 
+    color: #ddd; /* Slightly lighter than grey to pop on purple */
     text-transform: uppercase; 
     margin-top: 5px; 
     letter-spacing: 1px; 
