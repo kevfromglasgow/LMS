@@ -543,17 +543,9 @@ def main():
             existing_pick = pick_ref.get()
 
             if existing_pick.exists:
-                team = existing_pick.to_dict().get('team')
-                
-                # --- SECURITY MASKING ---
-                # Only show team if reveal time has passed
-                if now > reveal_time:
-                    display_team = team
-                else:
-                    display_team = "HIDDEN 🔒"
-                
-                st.success(f"✅ Pick confirmed for **{actual_user_name}**: **{display_team}**")
-                st.caption("Contact admin to change.")
+                # SAFE: Just show a generic message
+                st.success(f"✅ {actual_user_name} has already made a selection for Gameweek {gw}.")
+                st.caption("See the 'Still Standing' list below for details (picks revealed 30 mins before kick-off).")
             else:
                 if now > deadline:
                     st.error("🚫 Gameweek Locked")
