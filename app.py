@@ -103,7 +103,6 @@ def inject_custom_css():
 def get_all_players_from_db():
     try:
         docs = db.collection('players').stream()
-        # Only return players who are NOT eliminated? No, let's show everyone, logic handles blocking.
         return sorted([doc.id for doc in docs])
     except: return []
 
@@ -152,20 +151,25 @@ def admin_eliminate_losers(gw, matches):
         result = team_results.get(team, 'PENDING')
         
         if result == 'LOSE':
-            # Update player status to eliminated
             db.collection('players').document(user).update({'status': 'eliminated'})
             count += 1
     return count
 
-def admin_reset_game():
-    """Resets all players to active and clears used teams"""
+def admin_reset_game(current_gw):
+    """Resets all players to active, clears history, AND deletes current picks"""
+    # 1. Reset Players
     docs = db.collection('players').stream()
     for doc in docs:
         db.collection('players').document(doc.id).update({
             'status': 'active',
             'used_teams': []
         })
-    # Optional: Delete all picks? Usually better to just archive them or ignore old ones.
+        
+    # 2. Delete Picks for the current week (so the screen clears)
+    # Note: In a real scenario, you might want to archive these, but for a Reset, we delete.
+    picks = db.collection('picks').where('matchday', '==', current_gw).stream()
+    for pick in picks:
+        db.collection('picks').document(pick.id).delete()
 
 def display_player_status(picks, matches, reveal_mode=False):
     st.subheader("WEEKLY PICKS")
@@ -182,12 +186,10 @@ def display_player_status(picks, matches, reveal_mode=False):
         user = p.get('user', 'Unknown')
         team = p.get('team', 'Unknown')
         
-        # Check if player is eliminated in DB (to show visually)
         player_doc = db.collection('players').document(user).get()
         is_eliminated = player_doc.exists and player_doc.to_dict().get('status') == 'eliminated'
         
         if is_eliminated:
-            # Eliminated Visualization
             mid = '<span class="pc-hidden">❌</span>'
             btm = '<div class="pc-team" style="color:red;">ELIMINATED</div>'
         elif reveal_mode:
@@ -244,17 +246,16 @@ def main():
         st.divider()
         st.subheader("Game Controls")
         
-        # 1. Eliminate Losers Button
         if st.button("💀 Eliminate Losers (Current GW)"):
             count = admin_eliminate_losers(gw, matches)
             st.success(f"Processed! {count} players eliminated.")
-            st.cache_data.clear() # Clear cache to refresh UI
+            st.cache_data.clear() 
             st.rerun()
 
-        # 2. Reset Game Button
         if st.button("🔄 Start New Game (Reset All)"):
-            admin_reset_game()
-            st.success("Game Reset! All players are active.")
+            # Now passing 'gw' to delete picks for this week too
+            admin_reset_game(gw)
+            st.success("Game Reset! All players are active and picks cleared.")
             st.cache_data.clear()
             st.rerun()
 
@@ -268,8 +269,10 @@ def main():
     all_picks = get_all_picks_for_gw(gw)
     existing_players = get_all_players_from_db() 
     
-    # DEADLINE LOGIC (Testing Mode)
+    # DEADLINE LOGIC
+    # FORCE FUTURE DATE FOR TESTING (Remove this later)
     first_kickoff = datetime.now() + timedelta(days=1) 
+    
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
@@ -305,16 +308,14 @@ def main():
         actual_user_name = selected_option
 
     if actual_user_name:
-        # --- BLOCKING LOGIC ---
         user_ref = db.collection('players').document(actual_user_name)
         user_doc = user_ref.get()
         
-        # Check Status
+        # Check Status FIRST
         if user_doc.exists and user_doc.to_dict().get('status') == 'eliminated':
             st.error(f"❌ Sorry {actual_user_name}, you have been eliminated!")
             st.info("Wait for a new game to start to rejoin.")
         else:
-            # Proceed with normal selection
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
             existing_pick = pick_ref.get()
@@ -333,8 +334,12 @@ def main():
                     with st.form("pick_form"):
                         team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
                         if st.form_submit_button("SUBMIT PICK"):
-                            pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
-                            user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
+                            pick_ref.set({
+                                'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()
+                            })
+                            user_ref.set({
+                                'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'
+                            }, merge=True)
                             st.success(f"✅ Pick Locked In for {actual_user_name}!")
                             st.rerun()
                 if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
