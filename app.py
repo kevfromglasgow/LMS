@@ -25,9 +25,9 @@ def inject_custom_css():
     st.markdown("""
     <style>
         /* 1. NUCLEAR BACKGROUND FIX */
-        /* Target the main view container with !important to override Streamlit Dark Mode */
-        [data-testid="stAppViewContainer"] {
-            background: linear-gradient(rgba(10, 10, 10, 0.8), rgba(10, 10, 10, 0.9)), 
+        .stApp {
+            /* Lighter overlay (0.5) so you can actually SEE the image */
+            background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.7)), 
                         url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=2070&auto=format&fit=crop') !important;
             background-size: cover !important;
             background-position: center !important;
@@ -158,7 +158,7 @@ def display_fixtures_visual(matches):
             date_str = dt.strftime("%a %d")
             center_html = f'<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>'
 
-        # 2. Render Card (Flush left to avoid code block issues)
+        # 2. Render Card (Using f-string without indenting the HTML content)
         st.markdown(f"""
         <div class="match-card">
             <div class="team-container home-team">
@@ -198,7 +198,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v12', # Bumped to v12 to force clean login
+        'lms_cookie_v13', # Bumped to v13 to force clean login
         'lms_key', 
         cookie_expiry_days=30
     )
