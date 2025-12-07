@@ -3,8 +3,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 import requests
 from google.cloud import firestore
-import streamlit_authenticator as stauth
-import bcrypt
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Last Man Standing", layout="centered")
@@ -17,7 +15,7 @@ except Exception as e:
     st.error(f"Error connecting to secrets or database: {e}")
     st.stop()
 
-PL_COMPETITION_ID = 2021  # Premier League ID
+PL_COMPETITION_ID = 2021
 ENTRY_FEE = 10
 
 # --- 3. CUSTOM CSS ---
@@ -50,52 +48,27 @@ def inject_custom_css():
         }
         h1, h2, h3 { color: #ffffff !important; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* 3. PLAYER CARDS (UPDATED: List View) */
+        /* 3. PLAYER CARDS (List View) */
         .player-row-container {
-            display: flex;
-            flex-direction: column; /* Stack vertically like fixtures */
-            gap: 10px;
-            margin-bottom: 30px;
+            display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
-        
         .player-card {
-            background-color: #28002B;
-            border: 1px solid rgba(0, 255, 135, 0.3);
-            border-radius: 12px;
-            padding: 12px 20px; /* More padding for row look */
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            transition: transform 0.2s;
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between; /* Spread content out */
-            width: 100%;
+            background-color: #28002B; border: 1px solid rgba(0, 255, 135, 0.3); border-radius: 12px;
+            padding: 12px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s;
+            display: flex; align-items: center; justify-content: space-between; width: 100%;
         }
         .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
         
-        /* Left Side: Name */
-        .pc-name { 
-            font-size: 16px; font-weight: 700; color: #fff; 
-            flex: 1; text-align: left;
-        }
-        
-        /* Center: Badge/Icon */
-        .pc-center {
-            flex: 0 0 60px; text-align: center; display: flex; justify-content: center;
-        }
+        .pc-name { font-size: 16px; font-weight: 700; color: #fff; flex: 1; text-align: left; }
+        .pc-center { flex: 0 0 60px; text-align: center; display: flex; justify-content: center; }
         .pc-badge { width: 35px; height: 35px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
         .pc-hidden { font-size: 24px; }
-
-        /* Right Side: Team Name */
-        .pc-team { 
-            font-size: 14px; color: #00ff87; font-weight: 600; 
-            flex: 1; text-align: right; text-transform: uppercase;
-        }
+        .pc-team { font-size: 14px; color: #00ff87; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
 
         /* 4. MATCH CARDS */
         .match-card {
             background-color: #28002B; border-radius: 12px; padding: 12px 10px;
-            margin-bottom: 15px; 
-            border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             display: flex; flex-direction: column; 
         }
         .match-info-row { display: flex; align-items: center; justify-content: space-between; width: 100%; }
@@ -118,6 +91,9 @@ def inject_custom_css():
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
         
+        /* Input Field Styling */
+        input[type="text"] { color: #28002B !important; font-weight: bold; }
+        
         @media (max-width: 600px) {
             .team-container { font-size: 12px; }
             .crest-img { width: 25px; height: 25px; margin: 0 5px; }
@@ -127,15 +103,14 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # --- 4. HELPER FUNCTIONS ---
-def fetch_users():
-    users = {}
+def get_all_players_from_db():
+    """Fetch all unique player IDs (Names) from the database"""
     try:
-        for doc in db.collection('players').stream():
-            d = doc.to_dict()
-            if d.get('password'): users[doc.id] = {'name':d.get('name',doc.id),'password':d.get('password'),'email':d.get('email','')}
-    except: pass
-    if not users: users = {'admin':{'name':'Admin','password':'$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW','email':''}}
-    return users
+        docs = db.collection('players').stream()
+        # We assume the document ID is the Player Name
+        return sorted([doc.id for doc in docs])
+    except:
+        return []
 
 def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
@@ -158,29 +133,28 @@ def get_gameweek_deadline(matches):
     return min(dates) if dates else datetime.now()
 
 def display_player_status(picks, matches, reveal_mode=False):
-    st.subheader("WEEKLY PICKS") # Added Header
-    
+    st.subheader("WEEKLY PICKS")
     crest_map = {}
     for m in matches:
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
         crest_map[m['awayTeam']['name']] = m['awayTeam']['crest']
         
     cards_html = ""
-    for p in picks:
+    sorted_picks = sorted(picks, key=lambda x: x.get('user', ''))
+    
+    for p in sorted_picks:
         user = p.get('user', 'Unknown')
         team = p.get('team', 'Unknown')
-        is_visible = reveal_mode or (user == st.session_state["username"])
+        is_visible = reveal_mode # In simple mode, reveal means everyone sees everyone
         
         if is_visible:
             badge_url = crest_map.get(team, "")
-            # Using single quotes for outer HTML string, double for attributes
             mid = f'<img src="{badge_url}" class="pc-badge">' if badge_url else '<span class="pc-hidden">⚽</span>'
             btm = f'<div class="pc-team">{team}</div>'
         else:
             mid = '<span class="pc-hidden">🔒</span>'
             btm = '<div class="pc-team">HIDDEN</div>'
 
-        # Row Layout: Name | Badge | Team
         cards_html += f'<div class="player-card"><div class="pc-name">{user}</div><div class="pc-center">{mid}</div>{btm}</div>'
         
     if not cards_html:
@@ -210,100 +184,121 @@ def display_fixtures_visual(matches):
 # --- 5. MAIN APP LOGIC ---
 def main():
     inject_custom_css()
-    users_dict = fetch_users()
 
     with st.sidebar:
         st.header("🔧 Admin")
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
-        with st.expander("Hash Gen"):
-            p = st.text_input("Pass:", type="password")
-            if p: st.code(bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode())
+        st.info("No login required.")
 
-    authenticator = stauth.Authenticate({'usernames': users_dict}, 'lms_cookie_v26', 'lms_key', 30)
+    st.markdown("""
+        <div class="hero-container">
+            <div class="hero-title">LAST MAN STANDING</div>
+            <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    if st.session_state["authentication_status"]:
-        with st.sidebar:
-            st.write(f"User: **{st.session_state['name']}**")
-            authenticator.logout('Logout', 'main')
+    gw = get_current_gameweek()
+    if not gw: st.stop()
+    matches = get_matches_for_gameweek(gw)
+    if not matches: st.stop()
+    
+    # --- GET DATA ---
+    all_picks = get_all_picks_for_gw(gw)
+    existing_players = get_all_players_from_db() # Fetch names from DB
+    
+    # --- DEADLINE LOGIC ---
+    first_kickoff = datetime.now() + timedelta(days=1) # FORCE FUTURE DATE FOR TESTING
+    deadline = first_kickoff - timedelta(hours=1)
+    reveal_time = first_kickoff - timedelta(minutes=30)
+    
+    if simulate_reveal: reveal_time = datetime.now() - timedelta(hours=1)
+    
+    now = datetime.now()
+    is_reveal_active = (now > reveal_time)
 
-        st.markdown("""
-            <div class="hero-container">
-                <div class="hero-title">LAST MAN STANDING</div>
-                <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
-            </div>
-        """, unsafe_allow_html=True)
+    display_player_status(all_picks, matches, reveal_mode=is_reveal_active)
+    display_fixtures_visual(matches)
+    
+    st.write("")
+    c1, c2 = st.columns(2)
+    # Prize pot based on number of active players in DB
+    with c1: st.metric("💰 Prize Pot", f"£{len(existing_players) * ENTRY_FEE}")
+    with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
-        gw = get_current_gameweek()
-        if not gw: st.stop()
-        matches = get_matches_for_gameweek(gw)
-        if not matches: st.stop()
-        
-        all_picks = get_all_picks_for_gw(gw)
-        
-        # TESTING DEADLINE LOGIC
-        upcoming = [m for m in matches if m['status'] == 'SCHEDULED']
-        first_kickoff = datetime.now() + timedelta(days=1) # FORCE FUTURE DATE
-        deadline = first_kickoff - timedelta(hours=1)
-        reveal_time = first_kickoff - timedelta(minutes=30)
-        
-        if simulate_reveal: reveal_time = datetime.now() - timedelta(hours=1)
-        
-        now = datetime.now()
-        is_reveal_active = (now > reveal_time)
+    st.markdown("---")
+    st.subheader("🎯 Make Your Selection")
 
-        display_player_status(all_picks, matches, reveal_mode=is_reveal_active)
-        
-        display_fixtures_visual(matches)
-        
-        st.write("")
-        c1, c2 = st.columns(2)
-        with c1: st.metric("💰 Prize Pot", f"£{len(users_dict) * ENTRY_FEE}")
-        with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
+    # --- SELECTION FORM (Dynamic Dropdown) ---
+    
+    # Create the list options: [Select..., New Player, ...Existing Names]
+    options = ["Select your name...", "➕ I am a New Player"] + existing_players
+    
+    selected_option = st.selectbox("Who are you?", options)
+    
+    actual_user_name = None
 
-        tab1, tab2 = st.tabs(["🎯 Make Selection", "📊 History"])
-
-        with tab1:
-            pick_id = f"{st.session_state['username']}_GW{gw}"
-            pick_ref = db.collection('picks').document(pick_id)
-            if pick_ref.get().exists:
-                st.success(f"LOCKED IN: {pick_ref.get().to_dict().get('team')}")
+    # Logic to handle "New Player" vs "Existing Player"
+    if selected_option == "➕ I am a New Player":
+        new_name_input = st.text_input("Enter your full name (First & Last):")
+        if new_name_input:
+            # Clean up input (Title Case, Strip spaces)
+            clean_name = new_name_input.strip().title()
+            
+            # Prevent duplicates
+            if clean_name in existing_players:
+                st.error(f"'{clean_name}' already exists! Please select it from the dropdown above.")
             else:
-                user_ref = db.collection('players').document(st.session_state['username'])
-                user_doc = user_ref.get()
-                used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
-                valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
-                available = sorted([t for t in valid if t not in used])
-                
-                if not available: st.warning("No teams.")
-                else:
-                    with st.form("pick"):
-                        choice = st.selectbox("Select Team:", available)
-                        if st.form_submit_button("LOCK IN PICK"):
-                            pick_ref.set({'user': st.session_state['username'], 'team': choice, 'matchday': gw, 'timestamp': datetime.now()})
-                            user_ref.set({'used_teams': firestore.ArrayUnion([choice]), 'status': 'active'}, merge=True)
-                            st.rerun()
-                if used: st.info(f"Used: {', '.join(used)}")
+                actual_user_name = clean_name
+    elif selected_option != "Select your name...":
+        actual_user_name = selected_option
 
-        with tab2:
-            st.caption("Detailed history coming soon...")
+    # Only show the rest of the form if we have a valid name
+    if actual_user_name:
+        
+        # Check if they already picked
+        pick_id = f"{actual_user_name}_GW{gw}"
+        pick_ref = db.collection('picks').document(pick_id)
+        existing_pick = pick_ref.get()
 
-    else:
-        st.markdown("""<div class="hero-container"><div class="hero-title">LAST MAN STANDING</div><div class="hero-subtitle">LOGIN</div></div>""", unsafe_allow_html=True)
-        tab_login, tab_register = st.tabs(["Log In", "Sign Up"])
-        with tab_login:
-            authenticator.login('main')
-            if st.session_state["authentication_status"] is False: st.error('Incorrect')
-        with tab_register:
-            with st.form("reg"):
-                u = st.text_input("Username").lower().strip()
-                n, p, e = st.text_input("Name"), st.text_input("Pass", type="password"), st.text_input("Email")
-                if st.form_submit_button("Register"):
-                    if not u or not p: st.error("Missing fields")
-                    elif u in users_dict: st.error("Taken!")
-                    else:
-                        db.collection('players').document(u).set({'name':n,'password':bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode(),'email':e,'status':'active','used_teams':[]})
-                        st.success("Created! Log in.")
+        if existing_pick.exists:
+            team = existing_pick.to_dict().get('team')
+            st.success(f"✅ Pick confirmed for **{actual_user_name}**: **{team}**")
+            st.caption("To change this pick, please contact the admin.")
+        else:
+            # Fetch History for this specific user
+            user_ref = db.collection('players').document(actual_user_name)
+            user_doc = user_ref.get()
+            used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
+
+            valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
+            available = sorted([t for t in valid if t not in used])
+
+            if not available: 
+                st.warning("No teams available.")
+            else:
+                with st.form("pick_form"):
+                    team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
+                    
+                    if st.form_submit_button("SUBMIT PICK"):
+                        # 1. Save the Pick
+                        pick_ref.set({
+                            'user': actual_user_name, 
+                            'team': team_choice, 
+                            'matchday': gw, 
+                            'timestamp': datetime.now()
+                        })
+                        
+                        # 2. Update/Create Player Profile (This handles new users automatically)
+                        user_ref.set({
+                            'name': actual_user_name, 
+                            'used_teams': firestore.ArrayUnion([team_choice]), 
+                            'status': 'active'
+                        }, merge=True)
+                        
+                        st.success(f"✅ Pick Locked In for {actual_user_name}!")
                         st.rerun()
+            
+            if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
 
 if __name__ == "__main__":
     main()
