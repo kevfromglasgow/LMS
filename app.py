@@ -24,13 +24,30 @@ ENTRY_FEE = 10
 def inject_custom_css():
     st.markdown("""
     <style>
-        .stApp { background-color: #0e1117; }
-        h1, h2, h3 { color: #ffffff !important; text-transform: uppercase; font-family: sans-serif; }
+        /* 1. BACKGROUND IMAGE WITH DARK OVERLAY */
+        .stApp {
+            /* We use a linear-gradient to put a 85% black filter over the image so text pops */
+            background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.9)), 
+                              url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        h1, h2, h3 { 
+            color: #ffffff !important; 
+            text-transform: uppercase; 
+            font-family: sans-serif; 
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5); /* Subtle shadow for readability */
+        }
         
         /* Metric Cards */
         div[data-testid="stMetric"] {
-            background-color: #1a1c24; border: 1px solid #333;
-            padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            background-color: rgba(26, 28, 36, 0.8) !important; /* Semi-transparent */
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 15px; 
+            border-radius: 10px; 
+            backdrop-filter: blur(5px); /* Frosted glass effect */
         }
         div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
         
@@ -38,11 +55,12 @@ def inject_custom_css():
         .stButton button {
             background-color: #38003c !important; color: #00ff87 !important;
             border: 1px solid #00ff87 !important; font-weight: bold;
+            box-shadow: 0 0 10px rgba(0, 255, 135, 0.3); /* Neon glow */
         }
         
         /* MATCH CARD CSS */
         .match-card {
-            background-color: #1a1c24;
+            background-color: rgba(26, 28, 36, 0.9); /* Slightly transparent */
             border-radius: 12px;
             padding: 10px 15px;
             margin-bottom: 12px;
@@ -50,6 +68,7 @@ def inject_custom_css():
             align-items: center;
             justify-content: space-between;
             border: 1px solid #2d2f3a;
+            backdrop-filter: blur(5px);
         }
         .team-container {
             flex: 1; display: flex; align-items: center;
@@ -64,7 +83,7 @@ def inject_custom_css():
         }
         .score-text { font-size: 18px; font-weight: bold; color: #00ff87; margin: 0; line-height: 1.2; }
         .time-text { font-size: 16px; font-weight: bold; color: white; margin: 0; line-height: 1.2; }
-        .status-text { font-size: 11px; color: #888; text-transform: uppercase; margin-top: 4px; }
+        .status-text { font-size: 11px; color: #aaa; text-transform: uppercase; margin-top: 4px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -165,7 +184,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v9', # Version bump
+        'lms_cookie_v10', # Version bump
         'lms_key', 
         cookie_expiry_days=30
     )
