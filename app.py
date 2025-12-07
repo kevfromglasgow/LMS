@@ -24,43 +24,45 @@ ENTRY_FEE = 10
 def inject_custom_css():
     st.markdown("""
     <style>
-        /* 1. BACKGROUND IMAGE WITH DARK OVERLAY */
-        .stApp {
-            /* We use a linear-gradient to put a 85% black filter over the image so text pops */
-            background-image: linear-gradient(rgba(10, 10, 10, 0.85), rgba(10, 10, 10, 0.9)), 
+        /* 1. BACKGROUND IMAGE FIX */
+        /* We target 'stAppViewContainer' to force the background over the default theme */
+        [data-testid="stAppViewContainer"] {
+            background-image: linear-gradient(rgba(10, 10, 10, 0.8), rgba(10, 10, 10, 0.9)), 
                               url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=2070&auto=format&fit=crop');
             background-size: cover;
             background-position: center;
+            background-repeat: no-repeat;
             background-attachment: fixed;
         }
-
+        
+        /* 2. TEXT HEADERS */
         h1, h2, h3 { 
             color: #ffffff !important; 
             text-transform: uppercase; 
             font-family: sans-serif; 
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5); /* Subtle shadow for readability */
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
         
-        /* Metric Cards */
+        /* 3. METRIC CARDS */
         div[data-testid="stMetric"] {
-            background-color: rgba(26, 28, 36, 0.8) !important; /* Semi-transparent */
+            background-color: rgba(20, 20, 20, 0.85) !important;
             border: 1px solid rgba(255,255,255,0.1);
             padding: 15px; 
             border-radius: 10px; 
-            backdrop-filter: blur(5px); /* Frosted glass effect */
+            backdrop-filter: blur(5px);
         }
         div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
         
-        /* Buttons */
+        /* 4. BUTTONS */
         .stButton button {
             background-color: #38003c !important; color: #00ff87 !important;
             border: 1px solid #00ff87 !important; font-weight: bold;
-            box-shadow: 0 0 10px rgba(0, 255, 135, 0.3); /* Neon glow */
+            box-shadow: 0 0 10px rgba(0, 255, 135, 0.2);
         }
         
-        /* MATCH CARD CSS */
+        /* 5. MATCH CARD CSS */
         .match-card {
-            background-color: rgba(26, 28, 36, 0.9); /* Slightly transparent */
+            background-color: rgba(26, 28, 36, 0.95);
             border-radius: 12px;
             padding: 10px 15px;
             margin-bottom: 12px;
@@ -68,7 +70,7 @@ def inject_custom_css():
             align-items: center;
             justify-content: space-between;
             border: 1px solid #2d2f3a;
-            backdrop-filter: blur(5px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
         .team-container {
             flex: 1; display: flex; align-items: center;
@@ -144,7 +146,7 @@ def display_fixtures_visual(matches):
             date_str = dt.strftime("%a %d")
             center_html = f'<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>'
 
-        # 2. Render Card (Using f-string without indenting the HTML content)
+        # 2. Render Card
         st.markdown(f"""
         <div class="match-card">
             <div class="team-container home-team">
@@ -184,7 +186,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v10', # Version bump
+        'lms_cookie_v11', # Version bump
         'lms_key', 
         cookie_expiry_days=30
     )
