@@ -105,7 +105,7 @@ def main():
         'jdoe': {
             'name': 'John Doe',
             # This is a valid hash for "abc"
-            'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 
+            'password': '$2b$12$Cs597m281AAw3Z7u0gJFZ.QRvruTkx4PAlhoZqgrqObvwq8qfzDVK', 
             'email': 'jdoe@gmail.com'
         }
     }
