@@ -155,7 +155,7 @@ def inject_custom_css():
 # --- 4. HELPER FUNCTIONS ---
 @st.cache_data(ttl=60)
 def get_all_players_full():
-    """Fetch FULL player objects"""
+    """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -171,8 +171,9 @@ def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
+        # If API returns matches, use that gameweek. If season over, return 38.
         return r.json()['matches'][0]['matchday'] if r.json()['matches'] else 38
-    except: return 15
+    except: return 15 # Fallback if API fails
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
@@ -245,86 +246,6 @@ def admin_reset_game(current_gw, is_rollover=False):
     new_mult = current_mult + 1 if is_rollover else 1
     update_game_settings(new_mult)
     return "ROLLOVER!" if is_rollover else "RESET!"
-
-def bulk_import_history():
-    def fix_team(t):
-        mapping = {
-            "Bournemouth": "AFC Bournemouth", "Arsenal": "Arsenal FC", "Chelsea": "Chelsea FC",
-            "Brighton": "Brighton & Hove Albion FC", "Aston Villa": "Aston Villa FC",
-            "Manchester City": "Manchester City FC", "Manchester United": "Manchester United FC",
-            "Newcastle": "Newcastle United FC", "Crystal Palace": "Crystal Palace FC",
-            "Fulham": "Fulham FC", "Nottingham Forest": "Nottingham Forest FC",
-            "Liverpool": "Liverpool FC", "West Ham": "West Ham United FC",
-            "Sunderland": "Sunderland AFC", "Brentford": "Brentford FC",
-            "Wolverhampton Wanderers": "Wolverhampton Wanderers FC"
-        }
-        return mapping.get(t, t + " FC" if "FC" not in t else t)
-
-    RAW_DATA = {
-        "Aidan Mannion": ["Bournemouth", "Arsenal", "Chelsea", "Brighton", "Aston Villa", "Manchester City", "Manchester United"],
-        "Alan Comiskey": ["Chelsea"],
-        "Barry Mackintosh": ["Chelsea"],
-        "Clevon Beadle": ["Manchester City"],
-        "Colin Jackson": ["Manchester United", "Sunderland"],
-        "Colin Taylor": ["Chelsea"],
-        "Connor Smith": ["Bournemouth", "Arsenal", "Chelsea", "Liverpool"],
-        "Conor Brady": ["Bournemouth", "Arsenal", "Crystal Palace"],
-        "Danny Mulgrew": ["Chelsea"],
-        "Drew Boult": ["Arsenal", "Manchester United"],
-        "Fraser Robson": ["Bournemouth", "Manchester United"],
-        "Gary McIntyre": ["Manchester City"],
-        "John McAllister": ["Chelsea"],
-        "Jonathan McCormack": ["Manchester City"],
-        "Katie Arnold": ["Newcastle", "Arsenal", "Chelsea", "Aston Villa", "Manchester City", "Crystal Palace", "Brighton"],
-        "Kevin Dorward": ["Chelsea"],
-        "Kyle Goldie": ["Manchester City"],
-        "Kirsti Chalmers": ["Chelsea"],
-        "Lee Brady": ["Newcastle", "Fulham", "Nottingham Forest", "Bournemouth"],
-        "Liam Samuels": ["Newcastle", "Manchester United"],
-        "Lyndon Rambottom": ["Arsenal", "Brighton", "Chelsea", "Liverpool"],
-        "Mark Roberts": ["Chelsea"],
-        "Martin Brady": ["Chelsea"],
-        "Max Dougall": ["Bournemouth", "Arsenal", "Chelsea", "Crystal Palace", "Aston Villa", "Manchester United", "Liverpool"],
-        "Michael Cumming": ["Chelsea"],
-        "Michael Gallagher": ["Newcastle", "Arsenal", "West Ham", "Liverpool"],
-        "Michael Mullen": ["Manchester City"],
-        "Nathanael Samuels": ["Chelsea"],
-        "Phil McLean": ["Chelsea"],
-        "Richard Cartner": ["Newcastle", "Sunderland"],
-        "Scott Hendry": ["Manchester City"],
-        "Sean Flatley": ["Manchester City"],
-        "Stan Payne": ["Wolverhampton Wanderers"],
-        "Theo Samuels": ["Newcastle", "Manchester City", "West Ham", "Chelsea", "Brentford", "Arsenal"],
-        "Thomas Kolakovic": ["Chelsea"],
-        "Thomas McArthur": ["Manchester City"],
-        "Tom Wright": ["Chelsea"],
-        "Zach Smith-Palmieri": ["Chelsea"]
-    }
-
-    count_players = 0
-    for name, picks in RAW_DATA.items():
-        is_active = (len(picks) == 7)
-        status = 'active' if is_active else 'eliminated'
-        eliminated_gw = (len(picks) + 8) if not is_active else None 
-        used_teams = []
-        for i, raw_team in enumerate(picks):
-            gw = i + 9
-            team_name = fix_team(raw_team)
-            used_teams.append(team_name)
-            result = 'WIN'
-            if not is_active and i == len(picks) - 1: result = 'LOSS'
-            
-            db.collection('picks').document(f"{name}_GW{gw}").set({
-                'user': name, 'team': team_name, 'matchday': gw, 
-                'timestamp': datetime.now(), 'result': result
-            })
-
-        db.collection('players').document(name).set({
-            'name': name, 'status': status, 'used_teams': used_teams, 
-            'eliminated_gw': eliminated_gw, 'email': '', 'password': ''
-        })
-        count_players += 1
-    return count_players
 
 def display_player_status(picks, matches, players_data, reveal_mode=False):
     st.subheader("STILL STANDING")
@@ -423,10 +344,7 @@ def main():
     # --- ADMIN SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin Panel")
-        
-        if 'admin_logged_in' not in st.session_state:
-            st.session_state.admin_logged_in = False
-
+        if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
         if not st.session_state.admin_logged_in:
             pwd = st.text_input("Admin Password", type="password")
             if pwd == ADMIN_PASSWORD:
@@ -440,23 +358,23 @@ def main():
             st.success("✅ Logged In")
             st.divider()
             
+            # Show current API gameweek for reference
             real_gw = get_current_gameweek_from_api() 
-            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
+            st.info(f"API says: Gameweek {real_gw}")
+            
+            # --- LIVE: ALWAYS USE REAL GAMEWEEK ---
+            # I removed the override slider so you don't accidentally leave it on GW15
+            # We will use 'real_gw' in the main app logic
             
             st.divider()
             if st.button("🔄 ROLLOVER (Everyone Lost)"):
-                msg = admin_reset_game(gw_override, is_rollover=True)
+                msg = admin_reset_game(real_gw, is_rollover=True)
                 st.warning(msg)
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚠️ HARD RESET (New Season)"):
-                msg = admin_reset_game(gw_override, is_rollover=False)
+                msg = admin_reset_game(real_gw, is_rollover=False)
                 st.success(msg)
-                st.cache_data.clear()
-                st.rerun()
-            if st.button("⚡ Inject Spreadsheet Data"):
-                count = bulk_import_history()
-                st.success(f"Imported {count} players!")
                 st.cache_data.clear()
                 st.rerun()
 
@@ -467,13 +385,10 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    # --- HANDLING VARIABLES ---
-    gw = 15
-    if st.session_state.admin_logged_in:
-        try: gw = gw_override
-        except NameError: pass 
-    
+    # --- GET LIVE GAMEWEEK ---
+    gw = get_current_gameweek_from_api()
     matches = get_matches_for_gameweek(gw)
+    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -487,7 +402,7 @@ def main():
     settings = get_game_settings()
     multiplier = settings.get('rollover_multiplier', 1)
     
-    # --- REAL DEADLINE LOGIC ---
+    # --- DEADLINE LOGIC ---
     upcoming = [m for m in matches if m['status'] == 'SCHEDULED']
     if upcoming:
         first_kickoff = get_gameweek_deadline(upcoming)
@@ -497,13 +412,6 @@ def main():
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
-    # Override for Admin Simulation
-    sim_reveal = False # Default
-    if st.session_state.admin_logged_in:
-        # Check if widget exists
-        # Actually easier to just check deadline locally
-        pass
-
     now = datetime.utcnow()
     is_reveal_active = (now > reveal_time)
 
@@ -518,9 +426,8 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # Filter: Only ACTIVE players who haven't picked yet
+    # Filter: Active players who have NOT picked yet
     user_picks_this_week = {p['user'] for p in all_picks}
-    
     active_available_names = sorted([
         p['name'] for p in all_players_full 
         if p.get('status') == 'active' and p['name'] not in user_picks_this_week
@@ -528,7 +435,7 @@ def main():
     
     options = ["Select your name...", "➕ I am a New Player"] + active_available_names
     
-    # MOBILE FIX: Auto-Close Expander Logic
+    # MOBILE FIX: Auto-Close Expander
     if "selected_radio_option" not in st.session_state:
         st.session_state.selected_radio_option = "Select your name..."
     if "expander_version" not in st.session_state:
@@ -538,8 +445,8 @@ def main():
         st.session_state.expander_version += 1
 
     expander_label = f"👤 {st.session_state.selected_radio_option}" if st.session_state.selected_radio_option != "Select your name..." else "👤 Tap to select your name..."
-    expander_key = f"user_select_expander_{st.session_state.expander_version}"
-
+    
+    # Only show picker if you haven't picked yet
     with st.expander(expander_label, expanded=False):
         st.radio(
             "List of Players:", 
@@ -554,7 +461,6 @@ def main():
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
             clean_name = new_name_input.strip().title()
-            # Check against ALL players (even eliminated ones) to prevent duplicates
             all_names = [p['name'] for p in all_players_full]
             if clean_name in all_names: st.error(f"'{clean_name}' already exists!")
             else: actual_user_name = clean_name
@@ -571,7 +477,6 @@ def main():
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
             if pick_ref.get().exists:
-                # SAFE: Generic message
                 st.success(f"✅ {actual_user_name} has already made a selection for Gameweek {gw}.")
                 st.caption("See the 'Still Standing' list below for details (picks revealed 30 mins before kick-off).")
             else:
