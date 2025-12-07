@@ -15,7 +15,7 @@ except Exception as e:
     st.error(f"Error connecting to secrets or database: {e}")
     st.stop()
 
-PL_COMPETITION_ID = 2021
+PL_COMPETITION_ID = 2021  # Premier League ID
 ENTRY_FEE = 10
 
 # --- 3. CUSTOM CSS ---
@@ -66,7 +66,7 @@ def inject_custom_css():
         }
         .pc-badge { width: 35px; height: 35px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
         
-        /* STATUS BADGES (New!) */
+        /* STATUS BADGES */
         .status-tag-win { 
             font-size: 10px; background: #00ff87; color: #1F0022; padding: 2px 6px; 
             border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px;
@@ -105,8 +105,14 @@ def inject_custom_css():
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
         
-        /* Input Field Styling */
-        input[type="text"] { color: #28002B !important; font-weight: bold; }
+        /* --- FIX: INPUT TEXT COLOR --- */
+        /* Forces input text to be WHITE so it is visible against dark background */
+        input[type="text"] { 
+            color: #ffffff !important; 
+            font-weight: bold; 
+            background-color: rgba(255,255,255,0.1) !important;
+            border: 1px solid #00ff87 !important;
+        }
         
         @media (max-width: 600px) {
             .team-container { font-size: 12px; }
@@ -159,7 +165,6 @@ def calculate_team_results(matches):
                 results[away] = 'WIN'
                 results[home] = 'LOSE'
             else:
-                # Draw means both lose in Last Man Standing
                 results[home] = 'LOSE'
                 results[away] = 'LOSE'
         else:
@@ -169,11 +174,7 @@ def calculate_team_results(matches):
 
 def display_player_status(picks, matches, reveal_mode=False):
     st.subheader("WEEKLY PICKS")
-    
-    # 1. Calculate Results
     team_results = calculate_team_results(matches)
-    
-    # 2. Map Crests
     crest_map = {}
     for m in matches:
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
@@ -185,21 +186,14 @@ def display_player_status(picks, matches, reveal_mode=False):
     for p in sorted_picks:
         user = p.get('user', 'Unknown')
         team = p.get('team', 'Unknown')
-        
-        # 3. Determine Visibility
         is_visible = reveal_mode
         
         if is_visible:
             badge_url = crest_map.get(team, "")
-            
-            # Determine Result Status
             result = team_results.get(team, 'PENDING')
             status_html = ""
-            
-            if result == 'WIN':
-                status_html = '<div class="status-tag-win">THROUGH</div>'
-            elif result == 'LOSE':
-                status_html = '<div class="status-tag-loss">OUT</div>'
+            if result == 'WIN': status_html = '<div class="status-tag-win">THROUGH</div>'
+            elif result == 'LOSE': status_html = '<div class="status-tag-loss">OUT</div>'
             
             mid = f'<img src="{badge_url}" class="pc-badge">{status_html}' if badge_url else '<span class="pc-hidden">⚽</span>'
             btm = f'<div class="pc-team">{team}</div>'
@@ -209,10 +203,8 @@ def display_player_status(picks, matches, reveal_mode=False):
 
         cards_html += f'<div class="player-card"><div class="pc-name">{user}</div><div class="pc-center">{mid}</div>{btm}</div>'
         
-    if not cards_html:
-        st.info("No selections made for this gameweek yet.")
-    else:
-        st.markdown(f'<div class="player-row-container">{cards_html}</div>', unsafe_allow_html=True)
+    if not cards_html: st.info("No selections made for this gameweek yet.")
+    else: st.markdown(f'<div class="player-row-container">{cards_html}</div>', unsafe_allow_html=True)
 
 def display_fixtures_visual(matches):
     st.subheader(f"Fixtures")
@@ -254,14 +246,10 @@ def main():
     matches = get_matches_for_gameweek(gw)
     if not matches: st.stop()
     
-    # --- GET DATA ---
     all_picks = get_all_picks_for_gw(gw)
     existing_players = get_all_players_from_db() 
     
-    # --- DEADLINE LOGIC ---
-    # FORCE FUTURE DATE FOR TESTING (Remove this later)
     first_kickoff = datetime.now() + timedelta(days=1) 
-    
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
@@ -275,14 +263,12 @@ def main():
     
     st.write("")
     c1, c2 = st.columns(2)
-    # Prize pot based on number of active players in DB
     with c1: st.metric("💰 Prize Pot", f"£{len(existing_players) * ENTRY_FEE}")
     with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # --- SELECTION FORM ---
     options = ["Select your name...", "➕ I am a New Player"] + existing_players
     selected_option = st.selectbox("Who are you?", options)
     actual_user_name = None
