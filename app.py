@@ -233,7 +233,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v19', 
+        'lms_cookie_v20', # Bump to v20
         'lms_key', 
         cookie_expiry_days=30
     )
@@ -261,7 +261,16 @@ def main():
         display_fixtures_visual(matches)
         st.write("") 
 
-        first_kickoff = get_gameweek_deadline(matches)
+        # --- REVISED DEADLINE LOGIC FOR TESTING ---
+        # 1. Filter matches to find the NEXT one that hasn't played yet
+        upcoming_matches = [m for m in matches if m['status'] == 'SCHEDULED']
+        
+        # 2. Use the first upcoming match as the "New Deadline"
+        if upcoming_matches:
+            first_kickoff = get_gameweek_deadline(upcoming_matches)
+        else:
+            first_kickoff = get_gameweek_deadline(matches)
+
         deadline = first_kickoff - timedelta(hours=1)
         reveal_time = first_kickoff - timedelta(minutes=30)
         now = datetime.now(first_kickoff.tzinfo)
@@ -281,25 +290,25 @@ def main():
                 team = pick_doc.to_dict().get('team')
                 st.success(f"LOCKED IN: {team}")
             
-            # --- UNLOCKED: BYPASS DEADLINE FOR TESTING ---
+            # --- DEADLINE BYPASS ---
+            # To re-enable strict locking later, uncomment these lines:
             # elif now > deadline:
             #     st.error("🚫 Gameweek Locked")
             
             else:
                 if now > deadline:
-                    st.warning("⚠️ TESTING MODE: Deadline has passed, but unlocked for testing.")
+                    st.warning("⚠️ TESTING MODE: Deadline unlocked.")
 
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
                 used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
 
-                # Slightly relaxed filter to ensure teams show up even if games started
                 valid = set([m['homeTeam']['name'] for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY']] + 
                            [m['awayTeam']['name'] for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY']])
                 available = sorted([t for t in valid if t not in used])
 
                 if not available:
-                    st.warning("No teams available to pick (Check if games are SCHEDULED).")
+                    st.warning("No teams available to pick.")
                 else:
                     with st.form("pick"):
                         choice = st.selectbox("Select Team:", available)
