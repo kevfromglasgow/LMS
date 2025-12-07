@@ -7,227 +7,7 @@ import streamlit_authenticator as stauth
 import bcrypt
 
 # --- 1. PAGE CONFIGURATION ---
-st.set_page_config(page_title="Last Man Standing", layout="centered") 
-
-# --- CUSTOM CSS ---
-st.markdown("""
-<style>
-    /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    
-    /* Global Styles */
-    * {
-        font-family: 'Inter', sans-serif;
-    }
-    
-    /* Main Container */
-    .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem 1rem;
-    }
-    
-    /* Content Block */
-    .block-container {
-        background: white;
-        border-radius: 20px;
-        padding: 2rem;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* Title Styling */
-    h1 {
-        color: #2d3748;
-        font-weight: 700;
-        text-align: center;
-        margin-bottom: 2rem;
-        font-size: 2.5rem !important;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Subheaders */
-    h2, h3 {
-        color: #4a5568;
-        font-weight: 600;
-        margin-top: 1.5rem;
-    }
-    
-    /* Fixture Cards */
-    .element-container:has(img) {
-        transition: transform 0.2s ease;
-    }
-    
-    /* Dividers */
-    hr {
-        margin: 1rem 0;
-        border: none;
-        border-top: 2px solid #e2e8f0;
-    }
-    
-    /* Metric Styling */
-    [data-testid="stMetricValue"] {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #48bb78;
-    }
-    
-    [data-testid="stMetricLabel"] {
-        font-size: 1rem;
-        color: #718096;
-        font-weight: 600;
-    }
-    
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #f7fafc;
-        border-radius: 10px;
-        padding: 4px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 12px 24px;
-        font-weight: 600;
-        background-color: transparent;
-        color: #4a5568;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: white !important;
-        color: #667eea !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Buttons */
-    .stButton > button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        padding: 0.75rem 2rem;
-        font-weight: 600;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-    }
-    
-    /* Select Box */
-    .stSelectbox > div > div {
-        border-radius: 10px;
-        border: 2px solid #e2e8f0;
-    }
-    
-    /* Success/Error/Warning/Info Messages */
-    .stSuccess {
-        background-color: #f0fff4;
-        border-left: 4px solid #48bb78;
-        border-radius: 8px;
-        padding: 1rem;
-        color: #22543d;
-    }
-    
-    .stError {
-        background-color: #fff5f5;
-        border-left: 4px solid #f56565;
-        border-radius: 8px;
-        padding: 1rem;
-        color: #742a2a;
-    }
-    
-    .stWarning {
-        background-color: #fffaf0;
-        border-left: 4px solid #ed8936;
-        border-radius: 8px;
-        padding: 1rem;
-        color: #7c2d12;
-    }
-    
-    .stInfo {
-        background-color: #ebf8ff;
-        border-left: 4px solid #4299e1;
-        border-radius: 8px;
-        padding: 1rem;
-        color: #2c5282;
-    }
-    
-    /* Dataframe Styling */
-    .stDataFrame {
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #2d3748 0%, #1a202c 100%);
-    }
-    
-    [data-testid="stSidebar"] * {
-        color: white !important;
-    }
-    
-    /* Form Styling */
-    .stForm {
-        background-color: #f7fafc;
-        border-radius: 12px;
-        padding: 1.5rem;
-        border: 2px solid #e2e8f0;
-    }
-    
-    /* Expander */
-    .streamlit-expanderHeader {
-        background-color: #f7fafc;
-        border-radius: 8px;
-        font-weight: 600;
-    }
-    
-    /* Match Center Text */
-    div[style*='text-align: center'] {
-        font-weight: 600;
-    }
-    
-    /* Team Names Bold */
-    .element-container strong {
-        color: #2d3748;
-    }
-    
-    /* Caption */
-    .caption {
-        color: #718096;
-        font-size: 0.875rem;
-    }
-    
-    /* Fixture Row Hover Effect */
-    .element-container:has(> div > div > img):hover {
-        background-color: #f7fafc;
-        border-radius: 8px;
-        padding: 0.5rem;
-        transition: all 0.2s ease;
-    }
-    
-    /* Code Block */
-    .stCodeBlock {
-        border-radius: 8px;
-        background-color: #2d3748;
-    }
-    
-    /* Input Fields */
-    input {
-        border-radius: 8px !important;
-        border: 2px solid #e2e8f0 !important;
-    }
-    
-    input:focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="Last Man Standing", layout="centered")
 
 # --- 2. SECRETS & DATABASE SETUP ---
 try:
@@ -240,246 +20,289 @@ except Exception as e:
 PL_COMPETITION_ID = 2021  # Premier League ID
 ENTRY_FEE = 10
 
-# --- 3. HELPER FUNCTIONS ---
+# --- 3. CUSTOM STYLING (CSS) ---
+def inject_custom_css():
+    st.markdown("""
+    <style>
+        /* 1. MAIN APP BACKGROUND */
+        .stApp {
+            background-color: #0e1117; /* Dark background */
+        }
+        
+        /* 2. HEADERS */
+        h1, h2, h3 {
+            color: #ffffff !important;
+            font-family: 'Helvetica Neue', sans-serif;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* 3. METRIC CARDS (Prize Pot) */
+        div[data-testid="stMetric"] {
+            background-color: #1a1c24;
+            border: 1px solid #333;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        div[data-testid="stMetricLabel"] {
+            color: #00ff87 !important; /* PL Neon Green */
+        }
+        
+        /* 4. BUTTONS */
+        .stButton button {
+            background-color: #38003c !important; /* PL Purple */
+            color: #00ff87 !important; /* Neon text */
+            border: 1px solid #00ff87 !important;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .stButton button:hover {
+            background-color: #00ff87 !important;
+            color: #38003c !important;
+            transform: scale(1.02);
+        }
 
+        /* 5. MATCH CARD STYLES (Used in Python f-strings) */
+        .match-card {
+            background-color: #1a1c24;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid #2d2f3a;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .match-card:hover {
+            border-color: #00ff87;
+            transform: translateY(-2px);
+        }
+        .team-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+            color: white;
+            font-size: 14px;
+        }
+        .home-team { justify-content: flex-end; text-align: right; }
+        .away-team { justify-content: flex-start; text-align: left; }
+        
+        .crest-img { width: 32px; height: 32px; object-fit: contain; margin: 0 10px; }
+        
+        .score-box {
+            flex: 0 0 80px;
+            text-align: center;
+            background: #0e1117;
+            padding: 5px 0;
+            border-radius: 6px;
+            border: 1px solid #333;
+        }
+        .score-text { font-size: 18px; font-weight: bold; color: #00ff87; margin: 0; }
+        .time-text { font-size: 14px; font-weight: bold; color: white; margin: 0; }
+        .status-text { font-size: 10px; color: #888; text-transform: uppercase; margin-top: 2px; }
+        .live-dot { height: 8px; width: 8px; background-color: red; border-radius: 50%; display: inline-block; }
+        
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 4. HELPER FUNCTIONS ---
 @st.cache_data(ttl=3600)
 def get_current_gameweek():
-    """Find out which Matchday is currently active or next"""
     url = f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED"
     headers = {'X-Auth-Token': API_KEY}
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        data = response.json()
-        matches = data.get('matches', [])
-        if matches:
-            return matches[0]['matchday'] 
-        return 38 
-    except Exception as e:
-        st.error(f"Error finding gameweek: {e}")
+        matches = response.json().get('matches', [])
+        return matches[0]['matchday'] if matches else 38
+    except:
         return None
 
-@st.cache_data(ttl=600) 
+@st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
-    """Fetch ALL matches (Finished & Upcoming) for a specific Gameweek"""
     url = f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?matchday={gw}"
     headers = {'X-Auth-Token': API_KEY}
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        data = response.json()
-        return data['matches']
-    except Exception as e:
-        st.error(f"Error fetching matches: {e}")
+        return response.json()['matches']
+    except:
         return []
 
 def get_gameweek_deadline(matches):
-    """Find the kickoff time of the very first game in the list"""
-    if not matches:
-        return datetime.now() + timedelta(days=365) 
-    
-    dates = []
-    for m in matches:
-        dt = datetime.fromisoformat(m['utcDate'].replace('Z', '+00:00'))
-        dates.append(dt)
-        
-    first_match = min(dates)
-    return first_match
+    if not matches: return datetime.now() + timedelta(days=365)
+    dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '+00:00')) for m in matches]
+    return min(dates)
 
 def display_fixtures_visual(matches):
-    """Shows a neat List View of fixtures"""
+    """Renders HTML Match Cards instead of standard Streamlit columns"""
     st.subheader(f"Gameweek {matches[0]['matchday']} Fixtures")
     
-    with st.container():
-        for match in matches:
-            home_team = match['homeTeam']['name']
-            home_crest = match['homeTeam']['crest']
-            away_team = match['awayTeam']['name']
-            away_crest = match['awayTeam']['crest']
-            status = match['status']
-            
-            dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
-            
-            if status == 'FINISHED':
-                score_home = match['score']['fullTime']['home']
-                score_away = match['score']['fullTime']['away']
-                center_text = f"**{score_home} - {score_away}**"
-                sub_text = "FT"
-            elif status == 'IN_PLAY' or status == 'PAUSED':
-                score_home = match['score']['fullTime']['home']
-                score_away = match['score']['fullTime']['away']
-                center_text = f"**{score_home} - {score_away}**"
-                sub_text = "LIVE 🔴"
-            elif status == 'POSTPONED':
-                 center_text = "P - P"
-                 sub_text = "Postponed"
-            else:
-                center_text = dt.strftime("%H:%M")
-                sub_text = dt.strftime("%a %d")
+    for match in matches:
+        home = match['homeTeam']
+        away = match['awayTeam']
+        status = match['status']
+        dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
+        
+        # Determine center content (Score vs Time)
+        if status == 'FINISHED':
+            center_html = f"""
+                <div class="score-text">{match['score']['fullTime']['home']} - {match['score']['fullTime']['away']}</div>
+                <div class="status-text">FT</div>
+            """
+        elif status in ['IN_PLAY', 'PAUSED']:
+            center_html = f"""
+                <div class="score-text" style="color: #ff4b4b;">{match['score']['fullTime']['home']} - {match['score']['fullTime']['away']}</div>
+                <div class="status-text" style="color: #ff4b4b;">LIVE <span class="live-dot"></span></div>
+            """
+        elif status == 'POSTPONED':
+            center_html = """<div class="time-text">P-P</div><div class="status-text">Postponed</div>"""
+        else:
+            # Scheduled
+            time_str = dt.strftime("%H:%M")
+            date_str = dt.strftime("%a %d")
+            center_html = f"""<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>"""
 
-            c1, c2, c3, c4, c5 = st.columns([0.5, 2, 1, 2, 0.5])
-            
-            with c1:
-                st.image(home_crest, width=35)
-            
-            with c2:
-                st.write(f"**{home_team}**")
-                
-            with c3:
-                st.markdown(f"<div style='text-align: center;'>{center_text}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div style='text-align: center; color: gray; font-size: 12px;'>{sub_text}</div>", unsafe_allow_html=True)
-            
-            with c4:
-                st.write(f"**{away_team}**")
-                
-            with c5:
-                st.image(away_crest, width=35)
-            
-            st.divider()
+        # Render HTML Card
+        st.markdown(f"""
+        <div class="match-card">
+            <div class="team-container home-team">
+                <span>{home['name']}</span>
+                <img src="{home['crest']}" class="crest-img">
+            </div>
+            <div class="score-box">
+                {center_html}
+            </div>
+            <div class="team-container away-team">
+                <img src="{away['crest']}" class="crest-img">
+                <span>{away['name']}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-# --- 4. MAIN APP LOGIC ---
+# --- 5. MAIN APP LOGIC ---
 def main():
-    
-    with st.sidebar:
-        st.header("🔧 Admin Tools")
-        with st.expander("Password Hash Generator"):
-            new_pass = st.text_input("Enter a password to hash:", type="password")
-            if new_pass:
-                hashed_bytes = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt())
-                hashed_pw = hashed_bytes.decode('utf-8')
-                st.code(hashed_pw, language="text")
+    inject_custom_css()  # <--- Inject CSS here
 
-    # --- AUTHENTICATION SETUP ---
+    # --- SIDEBAR: ADMIN ---
+    with st.sidebar:
+        st.header("🔧 Admin")
+        with st.expander("Hash Gen"):
+            p = st.text_input("Pass:", type="password")
+            if p:
+                h = bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
+                st.code(h)
+
+    # --- AUTH ---
+    # NOTE: Ensure this hash matches your password 'abc'
     users_dict = {
         'jdoe': {
             'name': 'John Doe',
-            'password': '$2b$12$Cs597m281AAw3Z7u0gJFZ.QRvruTkx4PAlhoZqgrqObvwq8qfzDVK', 
+            'password': '$2b$12$Cs597m281AAw3Z7u0gJFZ.QRvruTkx4PAlhoZqgrqObvwq8qfzDVK',
             'email': 'jdoe@gmail.com'
         }
     }
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_name_v6',
-        'lms_signature_key', 
+        'lms_cookie_v7', # Bump version
+        'lms_key', 
         cookie_expiry_days=30
     )
-
     authenticator.login('main')
 
     if st.session_state["authentication_status"]:
-        username = st.session_state["username"]
         name = st.session_state["name"]
+        username = st.session_state["username"]
         
         with st.sidebar:
-            st.divider()
-            st.write(f"User: **{name}**")
+            st.write(f"Logged in as **{name}**")
             authenticator.logout('Logout', 'main')
 
-        st.title(f"⚽ Last Man Standing")
+        st.title("⚽ LAST MAN STANDING")
+        st.markdown("---")
 
+        # --- LOAD DATA ---
         gw = get_current_gameweek()
-        if not gw:
-            st.warning("Could not determine current gameweek.")
-            st.stop()
-            
+        if not gw: st.stop()
         matches = get_matches_for_gameweek(gw)
-        
-        if not matches:
-            st.warning(f"No matches found for Gameweek {gw}")
-            st.stop()
+        if not matches: st.stop()
 
+        # --- FIXTURE LIST ---
         display_fixtures_visual(matches)
+        
+        st.write("") # Spacer
 
+        # --- GAME LOGIC ---
         first_kickoff = get_gameweek_deadline(matches)
         deadline = first_kickoff - timedelta(hours=1)
         reveal_time = first_kickoff - timedelta(minutes=30)
-        current_time = datetime.now(first_kickoff.tzinfo)
+        now = datetime.now(first_kickoff.tzinfo)
 
-        st.metric(label="💰 Estimated Prize Pot", value=f"£{10 * ENTRY_FEE}")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("💰 Prize Pot", f"£{10 * ENTRY_FEE}")
+        with c2:
+            st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
-        tab1, tab2 = st.tabs(["My Pick", "All Selections"])
+        # --- TABS ---
+        tab1, tab2 = st.tabs(["🎯 Make Selection", "👀 Opponent Watch"])
 
         with tab1:
-            st.subheader(f"Selection (Gameweek {gw})")
-            
             pick_id = f"{username}_GW{gw}"
-            current_pick_ref = db.collection('picks').document(pick_id)
-            current_pick_doc = current_pick_ref.get()
-            
-            if current_pick_doc.exists:
-                saved_pick = current_pick_doc.to_dict().get('team')
-                st.success(f"✅ You have selected **{saved_pick}** for Gameweek {gw}.")
-                st.info("Your pick is locked in. Good luck!")
-                
-            elif current_time > deadline:
-                st.error(f"🚫 Gameweek Locked. Deadline was {deadline.strftime('%a %H:%M')}.")
-            
+            pick_ref = db.collection('picks').document(pick_id)
+            pick_doc = pick_ref.get()
+
+            if pick_doc.exists:
+                team = pick_doc.to_dict().get('team')
+                st.success(f"LOCKED IN: {team}")
+            elif now > deadline:
+                st.error("🚫 Gameweek Locked")
             else:
-                st.info(f"⏳ Deadline: {deadline.strftime('%A %d %b at %H:%M')}")
-                
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
-                used_teams = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
-                
-                home_teams = [m['homeTeam']['name'] for m in matches if m['status'] == 'SCHEDULED']
-                away_teams = [m['awayTeam']['name'] for m in matches if m['status'] == 'SCHEDULED']
-                valid_teams_this_week = set(home_teams + away_teams)
-                
-                all_possible = sorted(list(valid_teams_this_week))
-                available_teams = [t for t in all_possible if t not in used_teams]
-                
-                if not available_teams:
-                    st.warning("No available teams left to pick this week.")
-                else:
-                    with st.form("pick_form"):
-                        choice = st.selectbox("Pick a team to WIN:", available_teams)
-                        submitted = st.form_submit_button("Lock In Pick")
-                        
-                        if submitted:
-                            current_pick_ref.set({
-                                'user': username,
-                                'team': choice,
-                                'matchday': gw,
-                                'timestamp': datetime.now()
-                            })
-                            user_ref.set({
-                                'used_teams': firestore.ArrayUnion([choice]),
-                                'status': 'active'
-                            }, merge=True)
-                            st.success(f"Locked in: {choice}")
-                            st.rerun()
+                used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
 
-                if used_teams:
-                    st.divider()
-                    st.caption(f"Teams used: {', '.join(used_teams)}")
+                # Only scheduled games
+                valid = set([m['homeTeam']['name'] for m in matches if m['status'] == 'SCHEDULED'] + 
+                           [m['awayTeam']['name'] for m in matches if m['status'] == 'SCHEDULED'])
+                available = sorted([t for t in valid if t not in used])
+
+                if not available:
+                    st.warning("No teams available to pick.")
+                else:
+                    with st.form("pick"):
+                        choice = st.selectbox("Select Team:", available)
+                        if st.form_submit_button("LOCK IN PICK"):
+                            pick_ref.set({'user': username, 'team': choice, 'matchday': gw, 'timestamp': datetime.now()})
+                            user_ref.set({'used_teams': firestore.ArrayUnion([choice]), 'status': 'active'}, merge=True)
+                            st.rerun()
+                
+                if used:
+                    st.info(f"Used: {', '.join(used)}")
 
         with tab2:
-            st.subheader("Opponent Watch")
-            picks_ref = db.collection('picks').where('matchday', '==', gw).stream()
+            picks = db.collection('picks').where('matchday', '==', gw).stream()
+            data = []
+            for p in picks:
+                d = p.to_dict()
+                u, t = d.get('user'), d.get('team')
+                show = "HIDDEN 🔒" if (now < reveal_time and u != username) else t
+                data.append({"User": u, "Pick": show})
             
-            picks_data = []
-            for pick in picks_ref:
-                p = pick.to_dict()
-                pick_user = p.get('user', 'Unknown')
-                pick_team = p.get('team', 'Unknown')
-                
-                if current_time < reveal_time and pick_user != username:
-                    display_team = "HIDDEN 🔒"
-                else:
-                    display_team = pick_team
-                
-                picks_data.append({"Player": pick_user, "Selection": display_team})
-            
-            if picks_data:
-                st.dataframe(pd.DataFrame(picks_data), use_container_width=True)
-            else:
-                st.info("No picks yet.")
+            if data: st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+            else: st.caption("No picks yet.")
 
     elif st.session_state["authentication_status"] is False:
-        st.error('Username/password is incorrect')
+        st.error('Incorrect Password')
     elif st.session_state["authentication_status"] is None:
-        st.warning('Please enter your username and password')
+        st.warning('Please log in')
 
 if __name__ == "__main__":
     main()
