@@ -1,5 +1,7 @@
 .streamlit/
+.streamlit/secrets.toml
 secrets.toml
 *.pyc
 __pycache__/
 *.json  # Blocks your Firebase JSON key from being uploaded
+
