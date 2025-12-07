@@ -6,7 +6,7 @@ from google.cloud import firestore
 import streamlit_authenticator as stauth
 
 # --- CONFIGURATION ---
-API_KEY = st.secrets["bbd5672aae0f45d1b577251028eb13a4"]
+API_KEY = st.secrets["FOOTBALL_API_KEY"]
 PL_COMPETITION_ID = 2021  # Premier League ID for Football-Data.org
 ENTRY_FEE = 10
 
