@@ -113,7 +113,7 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # --- 4. HELPER FUNCTIONS ---
-def get_all_players_from_db():
+def get_all_players_full():
     """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
@@ -262,7 +262,6 @@ def bulk_import_history():
     for name, picks in RAW_DATA.items():
         is_active = (len(picks) == 7)
         status = 'active' if is_active else 'eliminated'
-        # Week 1 = GW9. Week 7 = GW15.
         eliminated_gw = (len(picks) + 8) if not is_active else None 
         used_teams = []
         for i, raw_team in enumerate(picks):
@@ -394,7 +393,6 @@ def main():
         st.divider()
         gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
         st.divider()
-        # Removed "Eliminate" button as it's now auto-processed
         if st.button("🔄 ROLLOVER (Everyone Lost)"):
             msg = admin_reset_game(gw_override, is_rollover=True)
             st.warning(msg)
@@ -427,10 +425,9 @@ def main():
     
     # --- AUTO ELIMINATION CHECK ---
     auto_process_eliminations(gw, matches)
-    # ------------------------------
     
     all_picks = get_all_picks_for_gw(gw)
-    all_players_full = get_all_players_from_db()
+    all_players_full = get_all_players_full() # Correct function call here
     
     settings = get_game_settings()
     multiplier = settings.get('rollover_multiplier', 1)
@@ -446,8 +443,8 @@ def main():
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
     
-    active_count = len([p for p in all_players_full if p.get('status') == 'active'])
-    pot_total = active_count * ENTRY_FEE * multiplier
+    # FIXED: Prize Pot counts ALL players in database, not just active ones
+    pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     
     st.write("")
     c1, c2 = st.columns(2)
