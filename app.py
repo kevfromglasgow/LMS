@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import requests
 from google.cloud import firestore
 import streamlit_authenticator as stauth
+from streamlit_authenticator.utilities.hasher import Hasher # <--- ADD THIS LINE
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Last Man Standing", layout="wide")
@@ -53,6 +54,11 @@ def get_gameweek_deadline(matches):
 
 # --- 4. MAIN APP LOGIC ---
 def main():
+    # --- TEMP: HASH GENERATOR ---
+    # This will print a valid hash for the password "123" on your screen
+    passwords_to_hash = ['123']
+    hashed_passwords = Hasher(passwords_to_hash).generate()
+    st.write(f"COPY THIS HASH: {hashed_passwords[0]}")
     
     # --- AUTHENTICATION SETUP ---
     # In a real app, you would load these hashed passwords from a YAML file or Database.
