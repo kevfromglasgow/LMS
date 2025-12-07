@@ -25,12 +25,16 @@ def inject_custom_css():
     st.markdown("""
     <style>
         .stApp { background-color: #0e1117; }
-        h1, h2, h3 { color: #ffffff !important; text-transform: uppercase; }
+        h1, h2, h3 { color: #ffffff !important; text-transform: uppercase; font-family: sans-serif; }
+        
+        /* Metric Cards */
         div[data-testid="stMetric"] {
             background-color: #1a1c24; border: 1px solid #333;
             padding: 15px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
         div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
+        
+        /* Buttons */
         .stButton button {
             background-color: #38003c !important; color: #00ff87 !important;
             border: 1px solid #00ff87 !important; font-weight: bold;
@@ -54,8 +58,9 @@ def inject_custom_css():
         .home-team { justify-content: flex-end; text-align: right; }
         .away-team { justify-content: flex-start; text-align: left; }
         .crest-img { width: 35px; height: 35px; object-fit: contain; margin: 0 12px; }
+        
         .score-box {
-            flex: 0 0 90px; text-align: center;
+            flex: 0 0 100px; text-align: center;
         }
         .score-text { font-size: 18px; font-weight: bold; color: #00ff87; margin: 0; line-height: 1.2; }
         .time-text { font-size: 16px; font-weight: bold; color: white; margin: 0; line-height: 1.2; }
@@ -101,39 +106,41 @@ def display_fixtures_visual(matches):
         status = match['status']
         dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
         
-        # Prepare content based on status
+        # 1. Prepare CENTER content (No extra spaces in strings!)
         if status == 'FINISHED':
-            center_content = f"""
-                <div class="score-text">{match['score']['fullTime']['home']} - {match['score']['fullTime']['away']}</div>
-                <div class="status-text">FT</div>"""
+            h_score = match['score']['fullTime']['home']
+            a_score = match['score']['fullTime']['away']
+            center_html = f'<div class="score-text">{h_score} - {a_score}</div><div class="status-text">FT</div>'
+            
         elif status in ['IN_PLAY', 'PAUSED']:
-            center_content = f"""
-                <div class="score-text" style="color:#ff4b4b;">{match['score']['fullTime']['home']} - {match['score']['fullTime']['away']}</div>
-                <div class="status-text" style="color:#ff4b4b;">LIVE</div>"""
+            h_score = match['score']['fullTime']['home']
+            a_score = match['score']['fullTime']['away']
+            center_html = f'<div class="score-text" style="color:#ff4b4b;">{h_score} - {a_score}</div><div class="status-text" style="color:#ff4b4b;">LIVE</div>'
+            
         elif status == 'POSTPONED':
-            center_content = """<div class="time-text">P-P</div><div class="status-text">Postponed</div>"""
+            center_html = '<div class="time-text">P-P</div><div class="status-text">Postponed</div>'
+            
         else:
             time_str = dt.strftime("%H:%M")
             date_str = dt.strftime("%a %d")
-            center_content = f"""<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>"""
+            center_html = f'<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>'
 
-        # IMPORTANT: No indentation inside the HTML string below!
-        html_code = f"""
-<div class="match-card">
-<div class="team-container home-team">
-<span>{home['name']}</span>
-<img src="{home['crest']}" class="crest-img">
-</div>
-<div class="score-box">
-{center_content}
-</div>
-<div class="team-container away-team">
-<img src="{away['crest']}" class="crest-img">
-<span>{away['name']}</span>
-</div>
-</div>
-"""
-        st.markdown(html_code, unsafe_allow_html=True)
+        # 2. Render Card (Using f-string without indenting the HTML content)
+        st.markdown(f"""
+        <div class="match-card">
+            <div class="team-container home-team">
+                <span>{home['name']}</span>
+                <img src="{home['crest']}" class="crest-img">
+            </div>
+            <div class="score-box">
+                {center_html}
+            </div>
+            <div class="team-container away-team">
+                <img src="{away['crest']}" class="crest-img">
+                <span>{away['name']}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # --- 5. MAIN APP LOGIC ---
 def main():
@@ -158,7 +165,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v8', # Bump version
+        'lms_cookie_v9', # Version bump
         'lms_key', 
         cookie_expiry_days=30
     )
