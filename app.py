@@ -139,6 +139,18 @@ def calculate_team_results(matches):
             results.update({home:'PENDING', away:'PENDING'})
     return results
 
+def get_game_settings():
+    """Fetches global game settings (like rollover multiplier)"""
+    doc = db.collection('settings').document('config').get()
+    if doc.exists:
+        return doc.to_dict()
+    else:
+        # Default settings if document doesn't exist
+        return {'rollover_multiplier': 1}
+
+def update_game_settings(multiplier):
+    db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
+
 def admin_eliminate_losers(gw, matches):
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
@@ -152,13 +164,32 @@ def admin_eliminate_losers(gw, matches):
             count += 1
     return count
 
-def admin_reset_game(current_gw):
+def admin_reset_game(current_gw, is_rollover=False):
+    """Resets game. If Rollover=True, increments pot multiplier."""
+    
+    # 1. Reset Players
     docs = db.collection('players').stream()
     for doc in docs:
         db.collection('players').document(doc.id).update({'status': 'active', 'used_teams': []})
+        
+    # 2. Delete Current Picks
     picks = db.collection('picks').where('matchday', '==', current_gw).stream()
     for pick in picks:
         db.collection('picks').document(pick.id).delete()
+
+    # 3. Handle Pot Multiplier
+    current_settings = get_game_settings()
+    current_mult = current_settings.get('rollover_multiplier', 1)
+    
+    if is_rollover:
+        new_mult = current_mult + 1
+        msg = f"🔄 ROLLOVER! Pot Multiplier increased to {new_mult}x"
+    else:
+        new_mult = 1
+        msg = "Game Reset. Pot Multiplier reset to 1x."
+        
+    update_game_settings(new_mult)
+    return msg
 
 def bulk_import_history():
     def fix_team(t):
@@ -221,7 +252,6 @@ def bulk_import_history():
         status = 'active' if is_active else 'eliminated'
         used_teams = []
         for i, raw_team in enumerate(picks):
-            # OFFSET: Week 1 becomes GW9, Week 7 becomes GW15
             gw = i + 9
             team_name = fix_team(raw_team)
             used_teams.append(team_name)
@@ -309,8 +339,6 @@ def main():
         st.header("🔧 Admin")
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
         st.divider()
-        
-        # --- GAMEWEEK OVERRIDE (Default = 15) ---
         gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
         
         st.divider()
@@ -321,12 +349,21 @@ def main():
             st.success(f"Processed! {count} players eliminated.")
             st.cache_data.clear() 
             st.rerun()
-        if st.button("🔄 Start New Game (Reset All)"):
-            admin_reset_game(gw_override)
-            st.success("Game Reset!")
+            
+        # --- NEW ROLLOVER BUTTON ---
+        if st.button("🔄 ROLLOVER (Everyone Lost)"):
+            msg = admin_reset_game(gw_override, is_rollover=True)
+            st.warning(msg)
             st.cache_data.clear()
             st.rerun()
-        if st.button("⚡ Inject Spreadsheet Data (Weeks 1-7 -> GW9-15)"):
+            
+        if st.button("⚠️ HARD RESET (New Season)"):
+            msg = admin_reset_game(gw_override, is_rollover=False)
+            st.success(msg)
+            st.cache_data.clear()
+            st.rerun()
+            
+        if st.button("⚡ Inject Spreadsheet Data"):
             count = bulk_import_history()
             st.success(f"Imported {count} players!")
             st.cache_data.clear()
@@ -349,6 +386,11 @@ def main():
     all_picks = get_all_picks_for_gw(gw)
     existing_players = get_all_players_from_db() 
     
+    # Calculate Dynamic Pot
+    settings = get_game_settings()
+    multiplier = settings.get('rollover_multiplier', 1)
+    pot_total = len(existing_players) * ENTRY_FEE * multiplier
+    
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
@@ -362,7 +404,13 @@ def main():
     
     st.write("")
     c1, c2 = st.columns(2)
-    with c1: st.metric("💰 Prize Pot", f"£{len(existing_players) * ENTRY_FEE}")
+    
+    # Updated Pot Metric to show Rollover Status
+    pot_label = "💰 Prize Pot"
+    if multiplier > 1:
+        pot_label = f"💰 ROLLOVER POT ({multiplier}x)"
+        
+    with c1: st.metric(pot_label, f"£{pot_total}")
     with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
     st.markdown("---")
