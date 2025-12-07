@@ -3,3 +3,4 @@ streamlit-authenticator
 google-cloud-firestore
 requests
 pandas
+bcrypt
