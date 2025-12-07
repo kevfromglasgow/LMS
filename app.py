@@ -114,7 +114,7 @@ def inject_custom_css():
 
 # --- 4. HELPER FUNCTIONS ---
 def get_all_players_full():
-    """Fetch FULL player data (name, status, eliminated_gw)"""
+    """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -127,14 +127,18 @@ def get_all_picks_for_gw(gw):
 @st.cache_data(ttl=3600)
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
-    r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
-    return r.json()['matches'][0]['matchday'] if r.json()['matches'] else 38
+    try:
+        r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
+        return r.json()['matches'][0]['matchday'] if r.json()['matches'] else 38
+    except: return 15 # Fallback
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
     headers = {'X-Auth-Token': API_KEY}
-    r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?matchday={gw}", headers=headers)
-    return r.json()['matches']
+    try:
+        r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?matchday={gw}", headers=headers)
+        return r.json()['matches']
+    except: return []
 
 def get_gameweek_deadline(matches):
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '+00:00')) for m in matches]
@@ -237,12 +241,13 @@ def bulk_import_history():
     for name, picks in RAW_DATA.items():
         is_active = (len(picks) == 7)
         status = 'active' if is_active else 'eliminated'
-        # If eliminated, calculate WHICH week. Week 1 = GW9.
-        # If len(picks) is 1, they lost week 1 (GW9).
+        # Week 1 = GW9. So if they lost week 1, eliminated_gw = 9.
+        # Week 7 = GW15.
         eliminated_gw = (len(picks) + 8) if not is_active else None 
         
         used_teams = []
         for i, raw_team in enumerate(picks):
+            # OFFSET: Week 1 is GW9, Week 7 is GW15
             gw = i + 9
             team_name = fix_team(raw_team)
             used_teams.append(team_name)
@@ -265,15 +270,8 @@ def bulk_import_history():
     return count_players
 
 def display_player_status(picks, matches, players_data, reveal_mode=False):
-    """
-    Displays two lists:
-    1. Survivors (Active)
-    2. The Fallen (Eliminated - Sorted by Elimination Week)
-    """
     st.subheader("WEEKLY LEADERBOARD")
     team_results = calculate_team_results(matches)
-    
-    # Create Map of User -> Pick for THIS week
     user_pick_map = {p['user']: p['team'] for p in picks}
     
     crest_map = {}
@@ -281,7 +279,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
         crest_map[m['awayTeam']['name']] = m['awayTeam']['crest']
         
-    # --- SPLIT PLAYERS INTO ACTIVE & ELIMINATED ---
     active_players = []
     eliminated_players = []
     
@@ -291,20 +288,15 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         else:
             active_players.append(p)
             
-    # Sort Active: Alphabetical
     active_players.sort(key=lambda x: x['name'])
-    
-    # Sort Eliminated: Highest GW (Recently Eliminated) at Top, Lowest GW (First Out) at Bottom
-    # Default to 0 if data missing
     eliminated_players.sort(key=lambda x: x.get('eliminated_gw', 0), reverse=True)
 
-    # --- RENDER ACTIVE PLAYERS ---
+    # ACTIVE LIST
     active_html = ""
     for p in active_players:
         name = p['name']
         team = user_pick_map.get(name, None)
         
-        # Visibility Logic
         if team:
             if reveal_mode:
                 badge_url = crest_map.get(team, "")
@@ -319,7 +311,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
                 mid = '<span class="pc-hidden">🔒</span>'
                 btm = '<div class="pc-team">HIDDEN</div>'
         else:
-            # Haven't picked yet
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
 
@@ -327,17 +318,15 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     
     st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
 
-    # --- RENDER ELIMINATED PLAYERS ---
+    # ELIMINATED LIST
     if eliminated_players:
         st.markdown("### 🪦 THE FALLEN")
         elim_html = ""
         for p in eliminated_players:
             name = p['name']
             gw_out = p.get('eliminated_gw', '?')
-            
             mid = '<span class="pc-hidden" style="opacity:0.5">💀</span>'
             btm = f'<div class="pc-eliminated-text">OUT GW{gw_out}</div>'
-            
             elim_html += f'<div class="player-card-eliminated"><div class="pc-name" style="color:#888">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
             
         st.markdown(f'<div class="player-row-container">{elim_html}</div>', unsafe_allow_html=True)
@@ -370,7 +359,11 @@ def main():
         st.header("🔧 Admin")
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
         st.divider()
+        
+        real_gw = get_current_gameweek_from_api() 
+        # Default to 15 based on your request, but allow sliding
         gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
+        
         st.divider()
         if st.button("💀 Eliminate Losers (Current GW)"):
             gw = gw_override
@@ -384,7 +377,7 @@ def main():
             st.success("Game Reset!")
             st.cache_data.clear()
             st.rerun()
-        if st.button("⚡ Inject Spreadsheet Data (Weeks 9-15)"):
+        if st.button("⚡ Inject Spreadsheet Data (GW9-15)"):
             count = bulk_import_history()
             st.success(f"Imported {count} players!")
             st.cache_data.clear()
@@ -405,9 +398,10 @@ def main():
         st.stop()
     
     all_picks = get_all_picks_for_gw(gw)
-    # New: Fetch full player objects for sorting
-    all_players_full = get_all_players_from_db() 
+    all_players_full = get_all_players_full()
     
+    # DEADLINE LOGIC
+    # FORCE FUTURE DATE FOR TESTING
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
@@ -416,11 +410,10 @@ def main():
     now = datetime.now()
     is_reveal_active = (now > reveal_time)
 
-    # Pass full player list to display function
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
     
-    # Calculate Active Pot
+    # Active Player Count for Pot
     active_count = len([p for p in all_players_full if p.get('status') == 'active'])
     
     st.write("")
@@ -431,10 +424,10 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # Only show ACTIVE players in dropdown
-    # We create a list of names for the dropdown
-    player_names = sorted([p['name'] for p in all_players_full])
-    options = ["Select your name...", "➕ I am a New Player"] + player_names
+    # Only show names in dropdown for Active + New users
+    # Sort names alphabetically
+    active_names = sorted([p['name'] for p in all_players_full]) # Show all for now so eliminated can see their status msg
+    options = ["Select your name...", "➕ I am a New Player"] + active_names
     selected_option = st.selectbox("Who are you?", options)
     actual_user_name = None
 
@@ -442,7 +435,7 @@ def main():
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
             clean_name = new_name_input.strip().title()
-            if clean_name in player_names:
+            if clean_name in active_names:
                 st.error(f"'{clean_name}' already exists!")
             else:
                 actual_user_name = clean_name
