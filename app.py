@@ -74,7 +74,7 @@ def main():
     users_dict = {
         'jdoe': {
             'name': 'John Doe',
-            'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', # Default: "abc"
+            'password': '$2b$12$j3DjWOCR01yKjDVqpG2sy.K8ZULR2/5ub2OdwdifiO5oLKQadfnNW', # Default: "abc"
             'email': 'jdoe@gmail.com'
         }
     }
