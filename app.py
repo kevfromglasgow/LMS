@@ -20,86 +20,14 @@ except Exception as e:
 PL_COMPETITION_ID = 2021  # Premier League ID
 ENTRY_FEE = 10
 
-# --- 3. CUSTOM STYLING (CSS) ---
-def inject_custom_css():
-    st.markdown("""
-    <style>
-        /* 1. NUCLEAR BACKGROUND FIX */
-        .stApp {
-            /* Lighter overlay (0.5) so you can actually SEE the image */
-            background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.7)), 
-                        url('https://images.unsplash.com/photo-1522778119026-d647f0565c6a?q=80&w=2070&auto=format&fit=crop') !important;
-            background-size: cover !important;
-            background-position: center !important;
-            background-attachment: fixed !important;
-            background-repeat: no-repeat !important;
-        }
-        
-        /* 2. TEXT HEADERS */
-        h1, h2, h3, p, div, span { 
-            font-family: 'Helvetica Neue', sans-serif; 
-        }
-        h1, h2, h3 {
-            color: #ffffff !important; 
-            text-transform: uppercase; 
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-        }
-        
-        /* 3. METRIC CARDS (Frosted Glass) */
-        div[data-testid="stMetric"] {
-            background-color: rgba(20, 20, 20, 0.7) !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
-            padding: 15px !important; 
-            border-radius: 10px !important; 
-            backdrop-filter: blur(10px);
-        }
-        div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
-        div[data-testid="stMetricValue"] { color: #ffffff !important; }
-        
-        /* 4. BUTTONS */
-        .stButton button {
-            background-color: #38003c !important; 
-            color: #00ff87 !important;
-            border: 1px solid #00ff87 !important; 
-            font-weight: bold !important;
-            box-shadow: 0 0 10px rgba(0, 255, 135, 0.2);
-            transition: all 0.3s ease;
-        }
-        .stButton button:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 20px rgba(0, 255, 135, 0.6);
-        }
-        
-        /* 5. MATCH CARD CSS (No Indentation Issues) */
-        .match-card {
-            background-color: rgba(26, 28, 36, 0.9);
-            border-radius: 12px;
-            padding: 12px 16px;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border: 1px solid rgba(255,255,255,0.05);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            backdrop-filter: blur(5px);
-        }
-        .team-container {
-            flex: 1; display: flex; align-items: center;
-            font-weight: 700; color: white; font-size: 15px; letter-spacing: 0.5px;
-        }
-        .home-team { justify-content: flex-end; text-align: right; }
-        .away-team { justify-content: flex-start; text-align: left; }
-        .crest-img { width: 38px; height: 38px; object-fit: contain; margin: 0 15px; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
-        
-        .score-box {
-            flex: 0 0 110px; text-align: center;
-        }
-        .score-text { font-size: 20px; font-weight: 800; color: #00ff87; margin: 0; line-height: 1; }
-        .time-text { font-size: 18px; font-weight: 700; color: white; margin: 0; line-height: 1; }
-        .status-text { font-size: 10px; color: #bbb; text-transform: uppercase; margin-top: 5px; letter-spacing: 1px; }
-        
-    </style>
-    """, unsafe_allow_html=True)
+# --- 3. CUSTOM STYLING (External File) ---
+def inject_custom_css(file_name="screen.css"):
+    """Reads a local CSS file and applies it to the app"""
+    try:
+        with open(file_name) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.error(f"⚠️ Could not find '{file_name}'. Make sure it is in the same folder as app.py")
 
 # --- 4. HELPER FUNCTIONS ---
 @st.cache_data(ttl=3600)
@@ -139,26 +67,22 @@ def display_fixtures_visual(matches):
         status = match['status']
         dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
         
-        # 1. Prepare CENTER content (Clean strings, no indentation)
         if status == 'FINISHED':
             h_score = match['score']['fullTime']['home']
             a_score = match['score']['fullTime']['away']
             center_html = f'<div class="score-text">{h_score} - {a_score}</div><div class="status-text">FT</div>'
-            
         elif status in ['IN_PLAY', 'PAUSED']:
             h_score = match['score']['fullTime']['home']
             a_score = match['score']['fullTime']['away']
             center_html = f'<div class="score-text" style="color:#ff4b4b;">{h_score} - {a_score}</div><div class="status-text" style="color:#ff4b4b;">LIVE</div>'
-            
         elif status == 'POSTPONED':
             center_html = '<div class="time-text">P-P</div><div class="status-text">Postponed</div>'
-            
         else:
             time_str = dt.strftime("%H:%M")
             date_str = dt.strftime("%a %d")
             center_html = f'<div class="time-text">{time_str}</div><div class="status-text">{date_str}</div>'
 
-        # 2. Render Card (Using f-string without indenting the HTML content)
+        # Renders the card using classes that MUST exist in your screen.css
         st.markdown(f"""
         <div class="match-card">
             <div class="team-container home-team">
@@ -177,7 +101,8 @@ def display_fixtures_visual(matches):
 
 # --- 5. MAIN APP LOGIC ---
 def main():
-    inject_custom_css()
+    # Load the CSS file here
+    inject_custom_css("screen.css")
 
     with st.sidebar:
         st.header("🔧 Admin")
@@ -198,7 +123,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v13', # Bumped to v13 to force clean login
+        'lms_cookie_v14', # Bumped to v14
         'lms_key', 
         cookie_expiry_days=30
     )
