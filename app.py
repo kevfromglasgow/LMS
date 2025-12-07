@@ -7,7 +7,8 @@ import streamlit_authenticator as stauth
 import bcrypt
 
 # --- 1. PAGE CONFIGURATION ---
-st.set_page_config(page_title="Last Man Standing", layout="wide")
+st.set_page_config(page_title="Last Man Standing", layout="centered") 
+# Note: I changed layout to "centered" - lists usually look better centered than "wide"
 
 # --- 2. SECRETS & DATABASE SETUP ---
 try:
@@ -22,7 +23,7 @@ ENTRY_FEE = 10
 
 # --- 3. HELPER FUNCTIONS ---
 
-@st.cache_data(ttl=3600) # Cache data for 1 hour to save API calls
+@st.cache_data(ttl=3600)
 def get_current_gameweek():
     """Find out which Matchday is currently active or next"""
     url = f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED"
@@ -33,13 +34,13 @@ def get_current_gameweek():
         data = response.json()
         matches = data.get('matches', [])
         if matches:
-            return matches[0]['matchday'] # Return the first upcoming matchday
-        return 38 # Fallback if season is over
+            return matches[0]['matchday'] 
+        return 38 
     except Exception as e:
         st.error(f"Error finding gameweek: {e}")
         return None
 
-@st.cache_data(ttl=600) # Cache match results for 10 mins
+@st.cache_data(ttl=600) 
 def get_matches_for_gameweek(gw):
     """Fetch ALL matches (Finished & Upcoming) for a specific Gameweek"""
     url = f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?matchday={gw}"
@@ -67,13 +68,12 @@ def get_gameweek_deadline(matches):
     return first_match
 
 def display_fixtures_visual(matches):
-    """Shows a visual grid with Scores or Kickoff times"""
-    st.subheader(f"📅 Gameweek {matches[0]['matchday']} Fixtures")
+    """Shows a neat List View of fixtures"""
+    # Removed the Emoji to prevent the 'July 17' confusion
+    st.subheader(f"Gameweek {matches[0]['matchday']} Fixtures")
     
     with st.container():
-        # Display in rows of 3
-        cols = st.columns(3)
-        for i, match in enumerate(matches):
+        for match in matches:
             home_team = match['homeTeam']['name']
             home_crest = match['homeTeam']['crest']
             away_team = match['awayTeam']['name']
@@ -98,23 +98,38 @@ def display_fixtures_visual(matches):
                  center_text = "P - P"
                  sub_text = "Postponed"
             else:
-                # Scheduled
-                center_text = "**VS**"
-                sub_text = dt.strftime("%a %H:%M")
+                center_text = dt.strftime("%H:%M") # Just time, cleaner
+                sub_text = dt.strftime("%a %d") # Date below
 
-            # Render the Card
-            with cols[i % 3]:
-                c1, c2, c3 = st.columns([1, 0.6, 1])
-                with c1:
-                    st.image(home_crest, width=50)
-                    st.caption(home_team)
-                with c2:
-                    st.markdown(f"<div style='text-align: center; margin-top: 10px;'>{center_text}</div>", unsafe_allow_html=True)
-                    st.caption(f"{sub_text}")
-                with c3:
-                    st.image(away_crest, width=50)
-                    st.caption(away_team)
-                st.divider()
+            # --- LIST LAYOUT (5 Columns) ---
+            # Col 1: Home Crest (Small)
+            # Col 2: Home Name 
+            # Col 3: Score/Time (Center)
+            # Col 4: Away Name
+            # Col 5: Away Crest (Small)
+            
+            c1, c2, c3, c4, c5 = st.columns([0.5, 2, 1, 2, 0.5])
+            
+            with c1:
+                st.image(home_crest, width=35)
+            
+            with c2:
+                st.write(f"**{home_team}**")
+                
+            with c3:
+                # Center align logic using markdown
+                st.markdown(f"<div style='text-align: center;'>{center_text}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; color: gray; font-size: 12px;'>{sub_text}</div>", unsafe_allow_html=True)
+            
+            with c4:
+                # Align away team name to the right to mirror home team? 
+                # Streamlit defaults left, which usually looks fine.
+                st.write(f"**{away_team}**")
+                
+            with c5:
+                st.image(away_crest, width=35)
+            
+            st.divider() # Clean line between games
 
 # --- 4. MAIN APP LOGIC ---
 def main():
@@ -140,7 +155,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_name_v5', # Version bumped to ensure clean login
+        'lms_cookie_name_v6', # Bump version
         'lms_signature_key', 
         cookie_expiry_days=30
     )
@@ -158,14 +173,12 @@ def main():
 
         st.title(f"⚽ Last Man Standing")
 
-        # --- DATA FETCH STRATEGY (UPDATED) ---
-        # 1. Find out what the current game week is
+        # --- DATA FETCH ---
         gw = get_current_gameweek()
         if not gw:
             st.warning("Could not determine current gameweek.")
             st.stop()
             
-        # 2. Fetch ALL matches for that week (Played + Scheduled)
         matches = get_matches_for_gameweek(gw)
         
         if not matches:
@@ -174,11 +187,8 @@ def main():
 
         # --- VISUALS ---
         display_fixtures_visual(matches)
-        st.write("---") 
 
-        # Calculate Deadlines (Logic: Use the earliest scheduled game for deadline)
-        # Note: If week has started, we still need the ORIGINAL deadline.
-        # Ideally, deadline logic should be strict. For now, we take the first game of the list.
+        # Calculate Deadlines
         first_kickoff = get_gameweek_deadline(matches)
         deadline = first_kickoff - timedelta(hours=1)
         reveal_time = first_kickoff - timedelta(minutes=30)
@@ -205,7 +215,6 @@ def main():
                 
             elif current_time > deadline:
                 st.error(f"🚫 Gameweek Locked. Deadline was {deadline.strftime('%a %H:%M')}.")
-                st.caption("Entries close 1 hour before the first kick-off of the week.")
             
             else:
                 st.info(f"⏳ Deadline: {deadline.strftime('%A %d %b at %H:%M')}")
@@ -213,9 +222,6 @@ def main():
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
                 used_teams = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
-                
-                # Filter teams: We can only pick teams that haven't played yet this week!
-                # Logic: Only allow selection if match status is 'SCHEDULED'
                 
                 home_teams = [m['homeTeam']['name'] for m in matches if m['status'] == 'SCHEDULED']
                 away_teams = [m['awayTeam']['name'] for m in matches if m['status'] == 'SCHEDULED']
@@ -225,7 +231,7 @@ def main():
                 available_teams = [t for t in all_possible if t not in used_teams]
                 
                 if not available_teams:
-                    st.warning("No available teams left to pick this week (or all games have started).")
+                    st.warning("No available teams left to pick this week.")
                 else:
                     with st.form("pick_form"):
                         choice = st.selectbox("Pick a team to WIN:", available_teams)
