@@ -111,7 +111,7 @@ def get_all_picks_for_gw(gw):
     except: return []
 
 @st.cache_data(ttl=3600)
-def get_current_gameweek():
+def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
     return r.json()['matches'][0]['matchday'] if r.json()['matches'] else 38
@@ -161,7 +161,6 @@ def admin_reset_game(current_gw):
         db.collection('picks').document(pick.id).delete()
 
 def bulk_import_history():
-    """Injects Weeks 1-7 history from the provided data"""
     def fix_team(t):
         mapping = {
             "Bournemouth": "AFC Bournemouth", "Arsenal": "Arsenal FC", "Chelsea": "Chelsea FC",
@@ -217,35 +216,30 @@ def bulk_import_history():
     }
 
     count_players = 0
-    
     for name, picks in RAW_DATA.items():
-        # If they have 7 picks, they are Active (won week 7). Less means they lost.
         is_active = (len(picks) == 7)
         status = 'active' if is_active else 'eliminated'
         used_teams = []
-        
         for i, raw_team in enumerate(picks):
-            gw = i + 1
+            # OFFSET: Week 1 becomes GW9, Week 7 becomes GW15
+            gw = i + 9
             team_name = fix_team(raw_team)
             used_teams.append(team_name)
             
-            # Record the pick
             result = 'WIN'
             if not is_active and i == len(picks) - 1:
-                result = 'LOSS' # Their last pick was the loser
-                
+                result = 'LOSS'
+            
             db.collection('picks').document(f"{name}_GW{gw}").set({
                 'user': name, 'team': team_name, 'matchday': gw, 
                 'timestamp': datetime.now(), 'result': result
             })
 
-        # Update Player Profile
         db.collection('players').document(name).set({
             'name': name, 'status': status, 'used_teams': used_teams,
             'email': '', 'password': ''
         })
         count_players += 1
-        
     return count_players
 
 def display_player_status(picks, matches, reveal_mode=False):
@@ -310,29 +304,31 @@ def display_fixtures_visual(matches):
 def main():
     inject_custom_css()
 
-    gw = get_current_gameweek()
-    if not gw: st.stop()
-    matches = get_matches_for_gameweek(gw)
-    if not matches: st.stop()
-
     # --- ADMIN SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin")
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
         st.divider()
+        
+        # --- GAMEWEEK OVERRIDE (Default = 15) ---
+        gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
+        
+        st.divider()
         if st.button("💀 Eliminate Losers (Current GW)"):
-            count = admin_eliminate_losers(gw, matches)
+            gw = gw_override
+            m = get_matches_for_gameweek(gw)
+            count = admin_eliminate_losers(gw, m)
             st.success(f"Processed! {count} players eliminated.")
             st.cache_data.clear() 
             st.rerun()
         if st.button("🔄 Start New Game (Reset All)"):
-            admin_reset_game(gw)
-            st.success("Game Reset! All players are active and picks cleared.")
+            admin_reset_game(gw_override)
+            st.success("Game Reset!")
             st.cache_data.clear()
             st.rerun()
-        if st.button("⚡ Inject Spreadsheet Data (Weeks 1-7)"):
+        if st.button("⚡ Inject Spreadsheet Data (Weeks 1-7 -> GW9-15)"):
             count = bulk_import_history()
-            st.success(f"Successfully imported history for {count} players!")
+            st.success(f"Imported {count} players!")
             st.cache_data.clear()
             st.rerun()
 
@@ -343,16 +339,21 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
+    gw = gw_override
+    matches = get_matches_for_gameweek(gw)
+    
+    if not matches:
+        st.warning("No matches found.")
+        st.stop()
+    
     all_picks = get_all_picks_for_gw(gw)
     existing_players = get_all_players_from_db() 
     
-    # DEADLINE LOGIC (Testing Mode)
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
     if simulate_reveal: reveal_time = datetime.now() - timedelta(hours=1)
-    
     now = datetime.now()
     is_reveal_active = (now > reveal_time)
 
