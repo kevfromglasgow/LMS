@@ -1,152 +1,41 @@
 /* --- screen.css --- */
 
-/* 1. BACKGROUND COLOR (Your Custom Purple #1F0022) */
-[data-testid="stAppViewContainer"] {
-    /* Updated with your specific image URL */
-    background: linear-gradient(rgba(31, 0, 34, 0.85), rgba(31, 0, 34, 0.95)), 
-                url('https://images.unsplash.com/photo-1693517393451-a71a593c9870?q=80&w=1770&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D') !important;
-    background-size: cover !important;
-    background-position: center !important;
-    background-attachment: fixed !important;
-    background-repeat: no-repeat !important;
-}
+/* 1. IMPORT GOOGLE FONT (Teko - Broadcast Style) */
+@import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&display=swap');
 
-/* 2. TEXT HEADERS (White) */
-h1, h2, h3, p, div, span { 
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
-}
+/* ... keep your existing background code here ... */
 
-h1, h2, h3 {
-    color: #ffffff !important; 
-    text-transform: uppercase; 
-    letter-spacing: 1px;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-
-/* 3. METRIC CARDS */
-div[data-testid="stMetric"] {
-    background-color: #28002B !important; 
-    border: 1px solid rgba(255,255,255,0.1) !important;
-    padding: 15px !important; 
-    border-radius: 10px !important; 
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-}
-
-div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
-div[data-testid="stMetricValue"] { color: #ffffff !important; }
-
-/* 4. BUTTONS */
-.stButton button {
-    background-color: #28002B !important; 
-    color: #ffffff !important;
-    border: 1px solid #00ff87 !important; 
-    font-weight: 800 !important;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    box-shadow: 0 0 10px rgba(0, 255, 135, 0.1);
-    transition: all 0.3s ease;
-}
-
-.stButton button:hover {
-    transform: scale(1.02);
-    box-shadow: 0 0 20px rgba(0, 255, 135, 0.4);
-    background-color: #00ff87 !important;
-    color: #1F0022 !important;
-}
-
-/* 5. MATCH CARDS */
-.match-card {
-    background-color: #28002B; 
-    border-radius: 12px;
-    padding: 12px 8px;
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border: 1px solid rgba(255,255,255,0.05);
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    transition: transform 0.2s ease;
-}
-
-.match-card:hover {
-    border-color: #00ff87;
-    transform: translateY(-2px);
-}
-
-.team-container {
-    flex: 1; 
-    display: flex; 
-    align-items: center;
-    font-weight: 700; 
-    color: white; 
-    font-size: 15px; 
-    letter-spacing: 0.5px;
-    min-width: 0;
-}
-
-.team-container span {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%; 
-}
-
-.home-team { justify-content: flex-end; text-align: right; }
-.home-team span { text-align: right; }
-
-.away-team { justify-content: flex-start; text-align: left; }
-.away-team span { text-align: left; }
-
-.crest-img { 
-    width: 38px; 
-    height: 38px; 
-    object-fit: contain; 
-    margin: 0 10px; 
-    flex-shrink: 0;
-    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); 
-}
-
-/* 6. SCORES AND TIME */
-.score-box {
-    flex: 0 0 90px;
+/* 2. CUSTOM HERO HEADER */
+.hero-container {
     text-align: center;
-    background-color: #1F0022; 
-    border-radius: 8px;
-    padding: 5px 0;
-    border: 1px solid rgba(255,255,255,0.05);
-    margin: 0 5px;
+    padding: 20px 0 10px 0;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.score-text { 
-    font-size: 18px; 
-    font-weight: 800; 
-    color: #00ff87; 
-    margin: 0; 
-    line-height: 1; 
+.hero-title {
+    font-family: 'Teko', sans-serif;
+    font-size: 60px; /* Big impact */
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #ffffff;
+    letter-spacing: 2px;
+    margin: 0;
+    line-height: 1;
+    
+    /* The "Neon Glow" Effect */
+    text-shadow: 0 0 10px rgba(0, 255, 135, 0.5), 
+                 0 0 20px rgba(0, 255, 135, 0.3);
 }
 
-.time-text { 
-    font-size: 16px; 
-    font-weight: 700; 
-    color: white; 
-    margin: 0; 
-    line-height: 1; 
-}
-
-.status-text { 
-    font-size: 9px; 
-    color: #ddd; 
-    text-transform: uppercase; 
-    margin-top: 5px; 
-    letter-spacing: 1px; 
+.hero-subtitle {
+    font-family: 'Helvetica Neue', sans-serif;
+    font-size: 14px;
+    color: #00ff87; /* Neon Green */
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-top: 5px;
     font-weight: 600;
 }
 
-/* 7. MOBILE RESPONSIVE TWEAKS */
-@media (max-width: 600px) {
-    .team-container { font-size: 12px; }
-    .crest-img { width: 25px; height: 25px; margin: 0 5px; }
-    .score-box { flex: 0 0 75px; }
-    .score-text { font-size: 16px; }
-    .time-text { font-size: 14px; }
-}
+/* ... keep the rest of your CSS below ... */
