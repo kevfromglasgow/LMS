@@ -12,7 +12,7 @@ ENTRY_FEE = 10
 
 # --- DATABASE CONNECTION ---
 # Assumes you have set up firestore credentials in .streamlit/secrets.toml
-db = firestore.Client.from_service_account_info(st.secrets["firestore"])
+db = firestore.Client.from_service_account_info(st.secrets["firebase"])
 
 # --- HELPER FUNCTIONS ---
 def get_fixtures():
