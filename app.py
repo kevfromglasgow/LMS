@@ -56,17 +56,19 @@ def get_gameweek_deadline(matches):
 # --- 4. MAIN APP LOGIC ---
 def main():
     
-    # --- SIDEBAR: ADMIN HASH GENERATOR (Use this to create new passwords) ---
+    # --- SIDEBAR: ADMIN HASH GENERATOR ---
     with st.sidebar:
         st.header("🔧 Admin Tools")
         with st.expander("Password Hash Generator"):
             new_pass = st.text_input("Enter a password to hash:", type="password")
             if new_pass:
-                # Generate hash using the library's utility
-                hashed_pw = Hasher([new_pass]).generate()[0]
+                # Generate hash using bcrypt directly (More reliable)
+                hashed_bytes = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt())
+                hashed_pw = hashed_bytes.decode('utf-8')
+                
                 st.code(hashed_pw, language="text")
                 st.caption("Copy this hash and paste it into 'users_dict' in app.py")
-
+                
     # --- AUTHENTICATION SETUP ---
     # REPLACE THE HASH BELOW with the one you generate in the sidebar!
     users_dict = {
