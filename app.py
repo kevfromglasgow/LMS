@@ -51,46 +51,33 @@ def display_fixtures_visual(matches):
     """Shows a visual grid of badges and kickoff times"""
     st.subheader(f"📅 Gameweek {matches[0]['matchday']} Fixtures")
     
-    # Create a container with a scrollable feel (optional, but keeps it neat)
     with st.container():
-        # Iterate through matches in pairs of 2 or 3 to make a grid
-        # We'll just stack them in rows of 3 for desktop view
         cols = st.columns(3)
-        
         for i, match in enumerate(matches):
             home_team = match['homeTeam']['name']
             home_crest = match['homeTeam']['crest']
             away_team = match['awayTeam']['name']
             away_crest = match['awayTeam']['crest']
             
-            # Format Date: "Sat 12:30"
             dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
             kickoff_str = dt.strftime("%a %H:%M")
 
-            # Cycle through the columns (0, 1, 2)
             with cols[i % 3]:
-                # CSS styling to center items is hard in pure Streamlit, so we use markdown/html columns
-                # Using columns for the mini-match card
                 c1, c2, c3 = st.columns([1, 0.5, 1])
-                
                 with c1:
                     st.image(home_crest, width=50)
                     st.caption(home_team)
-                
                 with c2:
                     st.write(f"**VS**")
                     st.caption(kickoff_str)
-                
                 with c3:
                     st.image(away_crest, width=50)
                     st.caption(away_team)
-                
                 st.divider()
 
 # --- 4. MAIN APP LOGIC ---
 def main():
     
-    # --- SIDEBAR: ADMIN TOOLS ---
     with st.sidebar:
         st.header("🔧 Admin Tools")
         with st.expander("Password Hash Generator"):
@@ -104,7 +91,7 @@ def main():
     users_dict = {
         'jdoe': {
             'name': 'John Doe',
-            # This is a valid hash for "abc"
+            # Use your WORKING hash here
             'password': '$2b$12$Cs597m281AAw3Z7u0gJFZ.QRvruTkx4PAlhoZqgrqObvwq8qfzDVK', 
             'email': 'jdoe@gmail.com'
         }
@@ -112,7 +99,7 @@ def main():
 
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_name_v3', 
+        'lms_cookie_name_v4', # Bump version to force refresh
         'lms_signature_key', 
         cookie_expiry_days=30
     )
@@ -131,14 +118,18 @@ def main():
         st.title(f"⚽ Last Man Standing")
 
         # --- DATA FETCH ---
-        matches = get_fixtures()
-        if not matches:
+        all_matches = get_fixtures()
+        if not all_matches:
             st.warning("No upcoming matches found.")
             st.stop()
             
+        # FILTER: Only keep games for the NEXT upcoming Matchday
+        next_gw = all_matches[0]['matchday']
+        matches = [m for m in all_matches if m['matchday'] == next_gw]
+            
         # --- NEW VISUAL SECTION ---
-        display_fixtures_visual(matches) # <--- THIS IS THE NEW PART
-        st.write("---") # Separator line
+        display_fixtures_visual(matches) 
+        st.write("---") 
 
         # Calculate Deadlines
         first_kickoff = get_gameweek_deadline(matches)
@@ -157,7 +148,6 @@ def main():
             gw = matches[0]['matchday']
             st.subheader(f"Selection")
             
-            # Check for existing pick
             pick_id = f"{username}_GW{gw}"
             current_pick_ref = db.collection('picks').document(pick_id)
             current_pick_doc = current_pick_ref.get()
@@ -173,7 +163,6 @@ def main():
             else:
                 st.info(f"⏳ Deadline: {deadline.strftime('%A %d %b at %H:%M')}")
                 
-                # Available Teams Logic
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
                 used_teams = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
