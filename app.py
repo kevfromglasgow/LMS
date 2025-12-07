@@ -134,42 +134,119 @@ def calculate_team_results(matches):
             h, a = m['score']['fullTime']['home'], m['score']['fullTime']['away']
             if h > a: results.update({home:'WIN', away:'LOSE'})
             elif a > h: results.update({away:'WIN', home:'LOSE'})
-            else: results.update({home:'LOSE', away:'LOSE'}) # Draw = Loss
+            else: results.update({home:'LOSE', away:'LOSE'}) 
         else:
             results.update({home:'PENDING', away:'PENDING'})
     return results
 
 def admin_eliminate_losers(gw, matches):
-    """Admin function to update player status based on results"""
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
     count = 0
-    
     for p in picks:
         user = p['user']
         team = p['team']
         result = team_results.get(team, 'PENDING')
-        
         if result == 'LOSE':
             db.collection('players').document(user).update({'status': 'eliminated'})
             count += 1
     return count
 
 def admin_reset_game(current_gw):
-    """Resets all players to active, clears history, AND deletes current picks"""
-    # 1. Reset Players
     docs = db.collection('players').stream()
     for doc in docs:
-        db.collection('players').document(doc.id).update({
-            'status': 'active',
-            'used_teams': []
-        })
-        
-    # 2. Delete Picks for the current week (so the screen clears)
-    # Note: In a real scenario, you might want to archive these, but for a Reset, we delete.
+        db.collection('players').document(doc.id).update({'status': 'active', 'used_teams': []})
     picks = db.collection('picks').where('matchday', '==', current_gw).stream()
     for pick in picks:
         db.collection('picks').document(pick.id).delete()
+
+def bulk_import_history():
+    """Injects Weeks 1-7 history from the provided data"""
+    def fix_team(t):
+        mapping = {
+            "Bournemouth": "AFC Bournemouth", "Arsenal": "Arsenal FC", "Chelsea": "Chelsea FC",
+            "Brighton": "Brighton & Hove Albion FC", "Aston Villa": "Aston Villa FC",
+            "Manchester City": "Manchester City FC", "Manchester United": "Manchester United FC",
+            "Newcastle": "Newcastle United FC", "Crystal Palace": "Crystal Palace FC",
+            "Fulham": "Fulham FC", "Nottingham Forest": "Nottingham Forest FC",
+            "Liverpool": "Liverpool FC", "West Ham": "West Ham United FC",
+            "Sunderland": "Sunderland AFC", "Brentford": "Brentford FC",
+            "Wolverhampton Wanderers": "Wolverhampton Wanderers FC"
+        }
+        return mapping.get(t, t + " FC" if "FC" not in t else t)
+
+    RAW_DATA = {
+        "Aidan Mannion": ["Bournemouth", "Arsenal", "Chelsea", "Brighton", "Aston Villa", "Manchester City", "Manchester United"],
+        "Alan Comiskey": ["Chelsea"],
+        "Barry Mackintosh": ["Chelsea"],
+        "Clevon Beadle": ["Manchester City"],
+        "Colin Jackson": ["Manchester United", "Sunderland"],
+        "Colin Taylor": ["Chelsea"],
+        "Connor Smith": ["Bournemouth", "Arsenal", "Chelsea", "Liverpool"],
+        "Conor Brady": ["Bournemouth", "Arsenal", "Crystal Palace"],
+        "Danny Mulgrew": ["Chelsea"],
+        "Drew Boult": ["Arsenal", "Manchester United"],
+        "Fraser Robson": ["Bournemouth", "Manchester United"],
+        "Gary McIntyre": ["Manchester City"],
+        "John McAllister": ["Chelsea"],
+        "Jonathan McCormack": ["Manchester City"],
+        "Katie Arnold": ["Newcastle", "Arsenal", "Chelsea", "Aston Villa", "Manchester City", "Crystal Palace", "Brighton"],
+        "Kevin Dorward": ["Chelsea"],
+        "Kyle Goldie": ["Manchester City"],
+        "Kirsti Chalmers": ["Chelsea"],
+        "Lee Brady": ["Newcastle", "Fulham", "Nottingham Forest", "Bournemouth"],
+        "Liam Samuels": ["Newcastle", "Manchester United"],
+        "Lyndon Rambottom": ["Arsenal", "Brighton", "Chelsea", "Liverpool"],
+        "Mark Roberts": ["Chelsea"],
+        "Martin Brady": ["Chelsea"],
+        "Max Dougall": ["Bournemouth", "Arsenal", "Chelsea", "Crystal Palace", "Aston Villa", "Manchester United", "Liverpool"],
+        "Michael Cumming": ["Chelsea"],
+        "Michael Gallagher": ["Newcastle", "Arsenal", "West Ham", "Liverpool"],
+        "Michael Mullen": ["Manchester City"],
+        "Nathanael Samuels": ["Chelsea"],
+        "Phil McLean": ["Chelsea"],
+        "Richard Cartner": ["Newcastle", "Sunderland"],
+        "Scott Hendry": ["Manchester City"],
+        "Sean Flatley": ["Manchester City"],
+        "Stan Payne": ["Wolverhampton Wanderers"],
+        "Theo Samuels": ["Newcastle", "Manchester City", "West Ham", "Chelsea", "Brentford", "Arsenal"],
+        "Thomas Kolakovic": ["Chelsea"],
+        "Thomas McArthur": ["Manchester City"],
+        "Tom Wright": ["Chelsea"],
+        "Zach Smith-Palmieri": ["Chelsea"]
+    }
+
+    count_players = 0
+    
+    for name, picks in RAW_DATA.items():
+        # If they have 7 picks, they are Active (won week 7). Less means they lost.
+        is_active = (len(picks) == 7)
+        status = 'active' if is_active else 'eliminated'
+        used_teams = []
+        
+        for i, raw_team in enumerate(picks):
+            gw = i + 1
+            team_name = fix_team(raw_team)
+            used_teams.append(team_name)
+            
+            # Record the pick
+            result = 'WIN'
+            if not is_active and i == len(picks) - 1:
+                result = 'LOSS' # Their last pick was the loser
+                
+            db.collection('picks').document(f"{name}_GW{gw}").set({
+                'user': name, 'team': team_name, 'matchday': gw, 
+                'timestamp': datetime.now(), 'result': result
+            })
+
+        # Update Player Profile
+        db.collection('players').document(name).set({
+            'name': name, 'status': status, 'used_teams': used_teams,
+            'email': '', 'password': ''
+        })
+        count_players += 1
+        
+    return count_players
 
 def display_player_status(picks, matches, reveal_mode=False):
     st.subheader("WEEKLY PICKS")
@@ -242,20 +319,20 @@ def main():
     with st.sidebar:
         st.header("🔧 Admin")
         simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
-        
         st.divider()
-        st.subheader("Game Controls")
-        
         if st.button("💀 Eliminate Losers (Current GW)"):
             count = admin_eliminate_losers(gw, matches)
             st.success(f"Processed! {count} players eliminated.")
             st.cache_data.clear() 
             st.rerun()
-
         if st.button("🔄 Start New Game (Reset All)"):
-            # Now passing 'gw' to delete picks for this week too
             admin_reset_game(gw)
             st.success("Game Reset! All players are active and picks cleared.")
+            st.cache_data.clear()
+            st.rerun()
+        if st.button("⚡ Inject Spreadsheet Data (Weeks 1-7)"):
+            count = bulk_import_history()
+            st.success(f"Successfully imported history for {count} players!")
             st.cache_data.clear()
             st.rerun()
 
@@ -269,10 +346,8 @@ def main():
     all_picks = get_all_picks_for_gw(gw)
     existing_players = get_all_players_from_db() 
     
-    # DEADLINE LOGIC
-    # FORCE FUTURE DATE FOR TESTING (Remove this later)
+    # DEADLINE LOGIC (Testing Mode)
     first_kickoff = datetime.now() + timedelta(days=1) 
-    
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
@@ -311,7 +386,6 @@ def main():
         user_ref = db.collection('players').document(actual_user_name)
         user_doc = user_ref.get()
         
-        # Check Status FIRST
         if user_doc.exists and user_doc.to_dict().get('status') == 'eliminated':
             st.error(f"❌ Sorry {actual_user_name}, you have been eliminated!")
             st.info("Wait for a new game to start to rejoin.")
@@ -334,12 +408,8 @@ def main():
                     with st.form("pick_form"):
                         team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
                         if st.form_submit_button("SUBMIT PICK"):
-                            pick_ref.set({
-                                'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()
-                            })
-                            user_ref.set({
-                                'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'
-                            }, merge=True)
+                            pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
+                            user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
                             st.success(f"✅ Pick Locked In for {actual_user_name}!")
                             st.rerun()
                 if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
