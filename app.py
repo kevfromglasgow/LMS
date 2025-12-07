@@ -104,7 +104,8 @@ def main():
     users_dict = {
         'jdoe': {
             'name': 'John Doe',
-            'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', # "abc"
+            # This is a valid hash for "abc"
+            'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 
             'email': 'jdoe@gmail.com'
         }
     }
