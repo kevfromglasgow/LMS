@@ -9,16 +9,23 @@ st.set_page_config(page_title="Last Man Standing", layout="centered")
 
 # --- 2. SECRETS & DATABASE SETUP ---
 try:
-    # Database
-    API_KEY = st.secrets["FOOTBALL_API_KEY"]
-    db = firestore.Client.from_service_account_info(st.secrets["firebase"])
+    if "FOOTBALL_API_KEY" in st.secrets:
+        API_KEY = st.secrets["FOOTBALL_API_KEY"]
+    else:
+        st.error("Missing 'FOOTBALL_API_KEY' in secrets.toml")
+        st.stop()
+
+    if "firebase" in st.secrets:
+        db = firestore.Client.from_service_account_info(st.secrets["firebase"])
+    else:
+        st.error("Missing [firebase] section in secrets.toml")
+        st.stop()
     
-    # 🔒 SECURE ADMIN PASSWORD (From Secrets)
-    ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
+    # Safe password retrieval
+    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "admin123")
     
 except Exception as e:
     st.error(f"Error connecting to secrets: {e}")
-    st.info("Make sure you have added ADMIN_PASSWORD to your .streamlit/secrets.toml file")
     st.stop()
 
 PL_COMPETITION_ID = 2021
@@ -114,6 +121,28 @@ def inject_custom_css():
             font-weight: 800 !important;
             border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 8px !important;
+        }
+        
+        /* ROLLOVER BANNER */
+        .rollover-banner {
+            background-color: #ff4b4b;
+            color: white;
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-family: 'Teko', sans-serif;
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            box-shadow: 0 0 20px rgba(255, 75, 75, 0.6);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
         }
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
@@ -287,8 +316,10 @@ def bulk_import_history():
             gw = i + 9
             team_name = fix_team(raw_team)
             used_teams.append(team_name)
+            
             result = 'WIN'
-            if not is_active and i == len(picks) - 1: result = 'LOSS'
+            if not is_active and i == len(picks) - 1:
+                result = 'LOSS'
             
             db.collection('picks').document(f"{name}_GW{gw}").set({
                 'user': name, 'team': team_name, 'matchday': gw, 
@@ -406,7 +437,6 @@ def main():
     with st.sidebar:
         st.header("🔧 Admin Panel")
         
-        # Session state for locking
         if 'admin_logged_in' not in st.session_state:
             st.session_state.admin_logged_in = False
 
@@ -421,7 +451,6 @@ def main():
                 st.rerun()
             
             st.success("✅ Logged In")
-            simulate_reveal = st.checkbox("Simulate Pick Reveal", value=False)
             st.divider()
             
             real_gw = get_current_gameweek_from_api() 
@@ -451,18 +480,12 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    # --- HANDLING VARIABLES OUTSIDE SIDEBAR ---
-    # We must define defaults first to avoid NameError if admin isn't logged in
+    # --- HANDLING VARIABLES ---
+    # Default to 15 for your testing session, or override if admin
     gw = 15
-    sim_reveal = False
-    
-    # If admin is logged in, we try to grab the values from the widgets
     if st.session_state.admin_logged_in:
-        try:
-            gw = gw_override
-            sim_reveal = simulate_reveal
-        except NameError:
-            pass # Use defaults if widget state not ready
+        try: gw = gw_override
+        except: pass
     
     matches = get_matches_for_gameweek(gw)
     
@@ -479,23 +502,28 @@ def main():
     settings = get_game_settings()
     multiplier = settings.get('rollover_multiplier', 1)
     
-    # DEADLINE LOGIC
-    first_kickoff = datetime.now() + timedelta(days=1) 
+    # --- REAL DEADLINE LOGIC ---
+    upcoming = [m for m in matches if m['status'] == 'SCHEDULED']
+    if upcoming:
+        first_kickoff = get_gameweek_deadline(upcoming)
+    else:
+        first_kickoff = get_gameweek_deadline(matches)
+        
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
-    if sim_reveal: reveal_time = datetime.now() - timedelta(hours=1)
     now = datetime.now()
+    # Reveal picks if current time > reveal time
     is_reveal_active = (now > reveal_time)
 
-    # 1. Metrics & Selection
-    st.write("")
+    # --- 1. METRICS ---
     c1, c2 = st.columns(2)
     pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     with c1: st.metric(pot_label, f"£{pot_total}")
     with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
 
+    # --- 2. SELECTION ---
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
@@ -508,48 +536,55 @@ def main():
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
             clean_name = new_name_input.strip().title()
-            if clean_name in active_names:
-                st.error(f"'{clean_name}' already exists!")
-            else:
-                actual_user_name = clean_name
+            if clean_name in active_names: st.error(f"'{clean_name}' already exists!")
+            else: actual_user_name = clean_name
     elif selected_option != "Select your name...":
         actual_user_name = selected_option
 
     if actual_user_name:
         user_ref = db.collection('players').document(actual_user_name)
         user_doc = user_ref.get()
-        
         if user_doc.exists and user_doc.to_dict().get('status') == 'eliminated':
             st.error(f"❌ Sorry {actual_user_name}, you have been eliminated!")
             st.info("Wait for a new game to start to rejoin.")
         else:
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
-            existing_pick = pick_ref.get()
-
-            if existing_pick.exists:
-                team = existing_pick.to_dict().get('team')
+            if pick_ref.get().exists:
+                team = pick_ref.get().to_dict().get('team')
                 st.success(f"✅ Pick confirmed for **{actual_user_name}**: **{team}**")
                 st.caption("Contact admin to change.")
             else:
-                used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
-                valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
-                available = sorted([t for t in valid if t not in used])
-
-                if not available: st.warning("No teams available.")
+                if now > deadline:
+                    st.error("🚫 Gameweek Locked")
                 else:
-                    with st.form("pick_form"):
-                        team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
-                        if st.form_submit_button("SUBMIT PICK"):
-                            pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
-                            user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
-                            st.success(f"✅ Pick Locked In for {actual_user_name}!")
-                            st.rerun()
-                if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
+                    used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
+                    valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
+                    available = sorted([t for t in valid if t not in used])
+                    
+                    if not available: st.warning("No teams available.")
+                    else:
+                        with st.form("pick_form"):
+                            team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
+                            if st.form_submit_button("SUBMIT PICK"):
+                                pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
+                                user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
+                                st.success(f"✅ Pick Locked In for {actual_user_name}!")
+                                st.rerun()
+                    if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
 
     st.markdown("---")
     
-    # 2. Status & Fixtures
+    # --- CHECK FOR ROLLOVER INCOMING ---
+    active_count = len([p for p in all_players_full if p.get('status') == 'active'])
+    if active_count == 0 and len(all_players_full) > 0:
+        st.markdown("""
+        <div class="rollover-banner">
+            💀 GAME OVER: ROLLOVER INCOMING 💀
+        </div>
+        """, unsafe_allow_html=True)
+
+    # --- 3. STATUS & FIXTURES ---
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
 
