@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import bcrypt
 from datetime import datetime, timedelta
 import requests
 from google.cloud import firestore
