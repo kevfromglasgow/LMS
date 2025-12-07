@@ -84,11 +84,15 @@ def inject_custom_css():
         .pc-name { 
             font-size: 16px; font-weight: 700; color: #fff; 
             flex: 1; text-align: left;
-            /* Allow wrapping */
-            white-space: normal; 
-            word-wrap: break-word;
-            line-height: 1.2; /* Tighter line height for wrapped text */
-            padding-right: 10px; /* Space between name and badge */
+            
+            /* CRITICAL FIXES FOR MOBILE WRAPPING */
+            white-space: normal !important;       /* Force wrap */
+            overflow-wrap: break-word !important; /* Break long words if needed */
+            word-wrap: break-word !important;     /* Legacy support */
+            min-width: 0 !important;              /* Allows flex child to shrink below content size */
+            
+            line-height: 1.2; 
+            padding-right: 10px; 
         }
         
         .pc-center { flex: 0 0 100px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -199,11 +203,9 @@ def format_deadline_date(dt):
         suffix = "th"
     else:
         suffix = ["st", "nd", "rd"][day % 10 - 1]
-    
     return dt.strftime(f"%a {day}{suffix} %b %H:%M")
 
 def get_gameweek_deadline(matches):
-    # Fix: remove Z to make utc-naive
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '')) for m in matches]
     return min(dates) if dates else datetime.utcnow()
 
@@ -413,6 +415,7 @@ def main():
         gw = get_current_gameweek_from_api()
     
     matches = get_matches_for_gameweek(gw)
+    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -445,6 +448,7 @@ def main():
     pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     with c1: st.metric(pot_label, f"£{pot_total}")
+    
     # FORMAT DATE FIX
     formatted_deadline = format_deadline_date(deadline)
     with c2: st.metric("DEADLINE", formatted_deadline)
@@ -452,6 +456,7 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
+    # Filter: Active players who have NOT picked yet
     user_picks_this_week = {p['user'] for p in all_picks}
     active_available_names = sorted([
         p['name'] for p in all_players_full 
@@ -470,17 +475,8 @@ def main():
         st.session_state.expander_version += 1
 
     expander_label = f"👤 {st.session_state.selected_radio_option}" if st.session_state.selected_radio_option != "Select your name..." else "👤 Tap to select your name..."
-    # Force rebuild with new key
     expander_key = f"user_select_expander_{st.session_state.expander_version}"
 
-    # We use a container to hold the expander so we can clear/rebuild it if needed, 
-    # but the key change in the widget loop usually handles it.
-    
-    # NOTE: Streamlit expanders don't accept a key directly to force close, 
-    # but placing the widget inside a conditional or using session state for content works.
-    # The radio callback updates the state, triggering a rerun. 
-    # We simply set expanded=False every time the script runs.
-    
     with st.expander(expander_label, expanded=False):
         st.radio(
             "List of Players:", 
