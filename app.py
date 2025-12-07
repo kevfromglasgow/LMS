@@ -352,7 +352,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
 
     if eliminated_players:
-        # --- COLLAPSIBLE SECTION FOR FALLEN ---
         with st.expander(f"🪦 THE FALLEN ({len(eliminated_players)})", expanded=False):
             elim_html = ""
             for p in eliminated_players:
@@ -404,7 +403,6 @@ def main():
         st.divider()
         gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
         st.divider()
-        # Auto-elimination now handles removing players, but we keep reset/import
         if st.button("🔄 ROLLOVER (Everyone Lost)"):
             msg = admin_reset_game(gw_override, is_rollover=True)
             st.warning(msg)
@@ -443,7 +441,10 @@ def main():
     
     settings = get_game_settings()
     multiplier = settings.get('rollover_multiplier', 1)
+    pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     
+    # DEADLINE LOGIC
+    # FORCE FUTURE DATE FOR TESTING
     first_kickoff = datetime.now() + timedelta(days=1) 
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
@@ -452,12 +453,10 @@ def main():
     now = datetime.now()
     is_reveal_active = (now > reveal_time)
 
-    display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
-    display_fixtures_visual(matches)
-    
-    pot_total = len(all_players_full) * ENTRY_FEE * multiplier
-    
+    # --- REORDERED SECTIONS ---
     st.write("")
+    
+    # 1. Metrics & Selection
     c1, c2 = st.columns(2)
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     with c1: st.metric(pot_label, f"£{pot_total}")
@@ -513,6 +512,12 @@ def main():
                             st.success(f"✅ Pick Locked In for {actual_user_name}!")
                             st.rerun()
                 if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
+
+    st.markdown("---")
+    
+    # 2. Status & Fixtures
+    display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
+    display_fixtures_visual(matches)
 
 if __name__ == "__main__":
     main()
