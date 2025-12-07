@@ -153,6 +153,9 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # --- 4. HELPER FUNCTIONS ---
+
+# --- CACHED DATABASE FUNCTIONS (SPEED BOOST 🚀) ---
+@st.cache_data(ttl=60) # Keep data for 60 seconds
 def get_all_players_full():
     """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
@@ -160,10 +163,17 @@ def get_all_players_full():
         return [doc.to_dict() for doc in docs]
     except: return []
 
+@st.cache_data(ttl=60)
 def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
+@st.cache_data(ttl=600)
+def get_game_settings():
+    doc = db.collection('settings').document('config').get()
+    return doc.to_dict() if doc.exists else {'rollover_multiplier': 1}
+
+# --- UNCACHED API FUNCTIONS ---
 @st.cache_data(ttl=3600)
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
@@ -181,7 +191,6 @@ def get_matches_for_gameweek(gw):
     except: return []
 
 def get_gameweek_deadline(matches):
-    # FIX: Remove 'Z' to make naive UTC time
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '')) for m in matches]
     return min(dates) if dates else datetime.utcnow()
 
@@ -198,13 +207,10 @@ def calculate_team_results(matches):
             results.update({home:'PENDING', away:'PENDING'})
     return results
 
-def get_game_settings():
-    doc = db.collection('settings').document('config').get()
-    return doc.to_dict() if doc.exists else {'rollover_multiplier': 1}
-
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
+# --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(gw, matches):
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
@@ -226,7 +232,7 @@ def auto_process_eliminations(gw, matches):
                     updates_made = True
     
     if updates_made:
-        st.cache_data.clear()
+        st.cache_data.clear() # Clear cache to show new fallen players
         st.rerun()
 
 def admin_reset_game(current_gw, is_rollover=False):
@@ -420,11 +426,15 @@ def main():
     # --- ADMIN SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin Panel")
-        if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
+        
+        if 'admin_logged_in' not in st.session_state:
+            st.session_state.admin_logged_in = False
+
         if not st.session_state.admin_logged_in:
             pwd = st.text_input("Admin Password", type="password")
             if pwd == ADMIN_PASSWORD:
                 st.session_state.admin_logged_in = True
+                st.cache_data.clear() # Clear cache on login to ensure fresh data
                 st.rerun()
         else:
             if st.button("Logout"):
@@ -469,6 +479,7 @@ def main():
         except NameError: pass 
     
     matches = get_matches_for_gameweek(gw)
+    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -492,8 +503,12 @@ def main():
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
-    if sim_reveal: reveal_time = datetime.now() - timedelta(hours=1)
+    # FIX: Use Naive UTC for comparison
     now = datetime.utcnow()
+    
+    # Override for Admin Simulation
+    if sim_reveal: reveal_time = now - timedelta(hours=1)
+        
     is_reveal_active = (now > reveal_time)
 
     # 1. Metrics & Selection
@@ -553,6 +568,7 @@ def main():
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
             if pick_ref.get().exists:
+                # SAFE: Generic message to prevent snooping
                 st.success(f"✅ {actual_user_name} has already made a selection for Gameweek {gw}.")
                 st.caption("See the 'Still Standing' list below for details (picks revealed 30 mins before kick-off).")
             else:
@@ -570,6 +586,7 @@ def main():
                                 pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
                                 user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
                                 st.success(f"✅ Pick Locked In for {actual_user_name}!")
+                                st.cache_data.clear() # CLEAR CACHE ON SUBMIT
                                 st.rerun()
                     if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
 
