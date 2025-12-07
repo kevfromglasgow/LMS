@@ -132,13 +132,10 @@ def fetch_users():
         docs = db.collection('players').stream()
         for doc in docs:
             data = doc.to_dict()
-            
-            # Extract fields safely
             name = data.get('name')
             password = data.get('password')
             email = data.get('email')
             
-            # CRITICAL CHECK: Only add if password exists and is a valid string
             if password and isinstance(password, str) and len(password) > 0:
                 users[doc.id] = {
                     'name': name if name else doc.id,
@@ -151,12 +148,10 @@ def fetch_users():
     except Exception as e:
         st.error(f"Database error: {e}")
         
-    # If DB is empty or fails, provide a fallback "admin" so you aren't locked out
     if not users:
         users = {
             'admin': {
                 'name': 'Fallback Admin',
-                # This is the hash for "123"
                 'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW',
                 'email': 'admin@example.com'
             }
@@ -234,21 +229,16 @@ def display_fixtures_visual(matches):
 # --- 5. MAIN APP LOGIC ---
 def main():
     inject_custom_css()
-    
-    # 1. Fetch Users from Database
     users_dict = fetch_users()
 
-    # 2. Setup Authenticator
     authenticator = stauth.Authenticate(
         {'usernames': users_dict},
-        'lms_cookie_v18', # Bumped to v18 for clean login
+        'lms_cookie_v19', 
         'lms_key', 
         cookie_expiry_days=30
     )
 
-    # 3. Check Login State
     if st.session_state["authentication_status"]:
-        # --- LOGGED IN VIEW ---
         name = st.session_state["name"]
         username = st.session_state["username"]
         
@@ -290,19 +280,26 @@ def main():
             if pick_doc.exists:
                 team = pick_doc.to_dict().get('team')
                 st.success(f"LOCKED IN: {team}")
-            elif now > deadline:
-                st.error("🚫 Gameweek Locked")
+            
+            # --- UNLOCKED: BYPASS DEADLINE FOR TESTING ---
+            # elif now > deadline:
+            #     st.error("🚫 Gameweek Locked")
+            
             else:
+                if now > deadline:
+                    st.warning("⚠️ TESTING MODE: Deadline has passed, but unlocked for testing.")
+
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
                 used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
 
-                valid = set([m['homeTeam']['name'] for m in matches if m['status'] == 'SCHEDULED'] + 
-                           [m['awayTeam']['name'] for m in matches if m['status'] == 'SCHEDULED'])
+                # Slightly relaxed filter to ensure teams show up even if games started
+                valid = set([m['homeTeam']['name'] for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY']] + 
+                           [m['awayTeam']['name'] for m in matches if m['status'] in ['SCHEDULED', 'TIMED', 'IN_PLAY']])
                 available = sorted([t for t in valid if t not in used])
 
                 if not available:
-                    st.warning("No teams available to pick.")
+                    st.warning("No teams available to pick (Check if games are SCHEDULED).")
                 else:
                     with st.form("pick"):
                         choice = st.selectbox("Select Team:", available)
@@ -326,7 +323,6 @@ def main():
             else: st.caption("No picks yet.")
 
     else:
-        # --- LOGIN / SIGN UP TABS ---
         st.markdown("""
             <div class="hero-container">
                 <div class="hero-title">LAST MAN STANDING</div>
@@ -358,16 +354,10 @@ def main():
                     elif new_user in users_dict:
                         st.error("Username already taken!")
                     else:
-                        # 1. Hash the password
                         hashed_pw = bcrypt.hashpw(new_pass.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                        
-                        # 2. Save to Firestore
                         db.collection('players').document(new_user).set({
-                            'name': new_name,
-                            'password': hashed_pw,
-                            'email': new_email,
-                            'status': 'active',
-                            'used_teams': []
+                            'name': new_name, 'password': hashed_pw, 'email': new_email,
+                            'status': 'active', 'used_teams': []
                         })
                         st.success("Account created! Please go to 'Log In' tab.")
                         st.rerun() 
