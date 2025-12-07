@@ -48,7 +48,7 @@ def inject_custom_css():
         }
         h1, h2, h3 { color: #ffffff !important; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* 3. PLAYER CARDS (List View) */
+        /* 3. PLAYER CARDS */
         .player-row-container {
             display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
@@ -60,8 +60,22 @@ def inject_custom_css():
         .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
         
         .pc-name { font-size: 16px; font-weight: 700; color: #fff; flex: 1; text-align: left; }
-        .pc-center { flex: 0 0 60px; text-align: center; display: flex; justify-content: center; }
+        
+        .pc-center { 
+            flex: 0 0 100px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; 
+        }
         .pc-badge { width: 35px; height: 35px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+        
+        /* STATUS BADGES (New!) */
+        .status-tag-win { 
+            font-size: 10px; background: #00ff87; color: #1F0022; padding: 2px 6px; 
+            border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px;
+        }
+        .status-tag-loss { 
+            font-size: 10px; background: #ff4b4b; color: white; padding: 2px 6px; 
+            border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px;
+        }
+        
         .pc-hidden { font-size: 24px; }
         .pc-team { font-size: 14px; color: #00ff87; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
 
@@ -107,7 +121,6 @@ def get_all_players_from_db():
     """Fetch all unique player IDs (Names) from the database"""
     try:
         docs = db.collection('players').stream()
-        # We assume the document ID is the Player Name
         return sorted([doc.id for doc in docs])
     except:
         return []
@@ -132,8 +145,35 @@ def get_gameweek_deadline(matches):
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '+00:00')) for m in matches]
     return min(dates) if dates else datetime.now()
 
+def calculate_team_results(matches):
+    """Returns a dict: {'TeamName': 'WIN' | 'LOSE' | 'PENDING'}"""
+    results = {}
+    for m in matches:
+        home, away = m['homeTeam']['name'], m['awayTeam']['name']
+        if m['status'] == 'FINISHED':
+            h_score, a_score = m['score']['fullTime']['home'], m['score']['fullTime']['away']
+            if h_score > a_score:
+                results[home] = 'WIN'
+                results[away] = 'LOSE'
+            elif a_score > h_score:
+                results[away] = 'WIN'
+                results[home] = 'LOSE'
+            else:
+                # Draw means both lose in Last Man Standing
+                results[home] = 'LOSE'
+                results[away] = 'LOSE'
+        else:
+            results[home] = 'PENDING'
+            results[away] = 'PENDING'
+    return results
+
 def display_player_status(picks, matches, reveal_mode=False):
     st.subheader("WEEKLY PICKS")
+    
+    # 1. Calculate Results
+    team_results = calculate_team_results(matches)
+    
+    # 2. Map Crests
     crest_map = {}
     for m in matches:
         crest_map[m['homeTeam']['name']] = m['homeTeam']['crest']
@@ -145,11 +185,23 @@ def display_player_status(picks, matches, reveal_mode=False):
     for p in sorted_picks:
         user = p.get('user', 'Unknown')
         team = p.get('team', 'Unknown')
-        is_visible = reveal_mode # In simple mode, reveal means everyone sees everyone
+        
+        # 3. Determine Visibility
+        is_visible = reveal_mode
         
         if is_visible:
             badge_url = crest_map.get(team, "")
-            mid = f'<img src="{badge_url}" class="pc-badge">' if badge_url else '<span class="pc-hidden">⚽</span>'
+            
+            # Determine Result Status
+            result = team_results.get(team, 'PENDING')
+            status_html = ""
+            
+            if result == 'WIN':
+                status_html = '<div class="status-tag-win">THROUGH</div>'
+            elif result == 'LOSE':
+                status_html = '<div class="status-tag-loss">OUT</div>'
+            
+            mid = f'<img src="{badge_url}" class="pc-badge">{status_html}' if badge_url else '<span class="pc-hidden">⚽</span>'
             btm = f'<div class="pc-team">{team}</div>'
         else:
             mid = '<span class="pc-hidden">🔒</span>'
@@ -204,10 +256,12 @@ def main():
     
     # --- GET DATA ---
     all_picks = get_all_picks_for_gw(gw)
-    existing_players = get_all_players_from_db() # Fetch names from DB
+    existing_players = get_all_players_from_db() 
     
     # --- DEADLINE LOGIC ---
-    first_kickoff = datetime.now() + timedelta(days=1) # FORCE FUTURE DATE FOR TESTING
+    # FORCE FUTURE DATE FOR TESTING (Remove this later)
+    first_kickoff = datetime.now() + timedelta(days=1) 
+    
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
@@ -228,23 +282,15 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # --- SELECTION FORM (Dynamic Dropdown) ---
-    
-    # Create the list options: [Select..., New Player, ...Existing Names]
+    # --- SELECTION FORM ---
     options = ["Select your name...", "➕ I am a New Player"] + existing_players
-    
     selected_option = st.selectbox("Who are you?", options)
-    
     actual_user_name = None
 
-    # Logic to handle "New Player" vs "Existing Player"
     if selected_option == "➕ I am a New Player":
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
-            # Clean up input (Title Case, Strip spaces)
             clean_name = new_name_input.strip().title()
-            
-            # Prevent duplicates
             if clean_name in existing_players:
                 st.error(f"'{clean_name}' already exists! Please select it from the dropdown above.")
             else:
@@ -252,10 +298,7 @@ def main():
     elif selected_option != "Select your name...":
         actual_user_name = selected_option
 
-    # Only show the rest of the form if we have a valid name
     if actual_user_name:
-        
-        # Check if they already picked
         pick_id = f"{actual_user_name}_GW{gw}"
         pick_ref = db.collection('picks').document(pick_id)
         existing_pick = pick_ref.get()
@@ -265,7 +308,6 @@ def main():
             st.success(f"✅ Pick confirmed for **{actual_user_name}**: **{team}**")
             st.caption("To change this pick, please contact the admin.")
         else:
-            # Fetch History for this specific user
             user_ref = db.collection('players').document(actual_user_name)
             user_doc = user_ref.get()
             used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
@@ -278,23 +320,13 @@ def main():
             else:
                 with st.form("pick_form"):
                     team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
-                    
                     if st.form_submit_button("SUBMIT PICK"):
-                        # 1. Save the Pick
                         pick_ref.set({
-                            'user': actual_user_name, 
-                            'team': team_choice, 
-                            'matchday': gw, 
-                            'timestamp': datetime.now()
+                            'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()
                         })
-                        
-                        # 2. Update/Create Player Profile (This handles new users automatically)
                         user_ref.set({
-                            'name': actual_user_name, 
-                            'used_teams': firestore.ArrayUnion([team_choice]), 
-                            'status': 'active'
+                            'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'
                         }, merge=True)
-                        
                         st.success(f"✅ Pick Locked In for {actual_user_name}!")
                         st.rerun()
             
