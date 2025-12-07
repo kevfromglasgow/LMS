@@ -181,7 +181,6 @@ def get_matches_for_gameweek(gw):
     except: return []
 
 def get_gameweek_deadline(matches):
-    # FIX: Remove 'Z' to make naive UTC time
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '')) for m in matches]
     return min(dates) if dates else datetime.utcnow()
 
@@ -205,6 +204,7 @@ def get_game_settings():
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
+# --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(gw, matches):
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(gw)
@@ -355,6 +355,7 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     for p in active_players:
         name = p['name']
         team = user_pick_map.get(name, None)
+        
         if team:
             if reveal_mode:
                 badge_url = crest_map.get(team, "")
@@ -369,6 +370,7 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         else:
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
+
         active_html += f'<div class="player-card"><div class="pc-name">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
     
     st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
@@ -460,11 +462,14 @@ def main():
     
     # --- HANDLING VARIABLES ---
     gw = 15
+    sim_reveal = False
+    
     if st.session_state.admin_logged_in:
         try: gw = gw_override
         except NameError: pass 
     
     matches = get_matches_for_gameweek(gw)
+    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -489,6 +494,10 @@ def main():
     reveal_time = first_kickoff - timedelta(minutes=30)
     
     now = datetime.utcnow()
+    
+    # Override for Admin Simulation
+    if sim_reveal: reveal_time = now - timedelta(hours=1)
+        
     is_reveal_active = (now > reveal_time)
 
     # 1. Metrics & Selection
@@ -505,9 +514,21 @@ def main():
     active_names = sorted([p['name'] for p in all_players_full])
     options = ["Select your name...", "➕ I am a New Player"] + active_names
     
-    # MOBILE FIX: Use Expander + Radio for selection
-    with st.expander("👤 Tap to select your name", expanded=False):
-        selected_option = st.radio("List of Players:", options, label_visibility="collapsed")
+    # MOBILE FIX: Use Expander + Radio for selection logic
+    if "expander_state" not in st.session_state:
+        st.session_state.expander_state = False
+
+    def close_expander():
+        st.session_state.expander_state = False
+
+    with st.expander("👤 Tap to select your name", expanded=st.session_state.expander_state):
+        selected_option = st.radio(
+            "List of Players:", 
+            options, 
+            label_visibility="collapsed",
+            key="player_selection_radio",
+            on_change=close_expander
+        )
     
     actual_user_name = None
     if selected_option == "➕ I am a New Player":
