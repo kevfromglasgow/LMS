@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import requests
 from google.cloud import firestore
 import streamlit_authenticator as stauth
-from streamlit_authenticator.utilities.hasher import Hasher # <--- ADD THIS LINE
+from streamlit_authenticator.utilities.hasher import Hasher
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Last Man Standing", layout="wide")
@@ -54,19 +54,24 @@ def get_gameweek_deadline(matches):
 
 # --- 4. MAIN APP LOGIC ---
 def main():
-    # --- TEMP: HASH GENERATOR ---
-    # This will print a valid hash for the password "123" on your screen
-    passwords_to_hash = ['123']
-    hashed_passwords = Hasher(passwords_to_hash).generate()
-    st.write(f"COPY THIS HASH: {hashed_passwords[0]}")
     
+    # --- SIDEBAR: ADMIN HASH GENERATOR (Use this to create new passwords) ---
+    with st.sidebar:
+        st.header("🔧 Admin Tools")
+        with st.expander("Password Hash Generator"):
+            new_pass = st.text_input("Enter a password to hash:", type="password")
+            if new_pass:
+                # Generate hash using the library's utility
+                hashed_pw = Hasher([new_pass]).generate()[0]
+                st.code(hashed_pw, language="text")
+                st.caption("Copy this hash and paste it into 'users_dict' in app.py")
+
     # --- AUTHENTICATION SETUP ---
-    # In a real app, you would load these hashed passwords from a YAML file or Database.
-    # The password for 'jdoe' below is 'abc' (hashed using bcrypt).
+    # REPLACE THE HASH BELOW with the one you generate in the sidebar!
     users_dict = {
         'jdoe': {
             'name': 'John Doe',
-            'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', 
+            'password': '$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW', # Default: "abc"
             'email': 'jdoe@gmail.com'
         }
     }
@@ -88,6 +93,7 @@ def main():
         
         # Sidebar with Logout
         with st.sidebar:
+            st.divider()
             st.write(f"User: **{name}**")
             authenticator.logout('Logout', 'main')
 
@@ -108,7 +114,6 @@ def main():
         current_time = datetime.now(first_kickoff.tzinfo)
 
         # Prize Pot Display
-        # Note: In production, you'd count actual active documents in DB
         st.metric(label="💰 Estimated Prize Pot", value=f"£{10 * ENTRY_FEE} (Example)")
 
         # Game Tabs
@@ -123,7 +128,7 @@ def main():
             else:
                 st.info(f"⏳ Deadline: {deadline.strftime('%A %d %b at %H:%M')}")
                 
-                # Fetch user's history from Firestore to filter teams
+                # Fetch user's history from Firestore
                 user_ref = db.collection('players').document(username)
                 user_doc = user_ref.get()
                 
@@ -160,10 +165,9 @@ def main():
                             })
                             
                             # 2. Update 'used_teams' in 'players' collection
-                            # We use ArrayUnion to append without overwriting
                             user_ref.set({
                                 'used_teams': firestore.ArrayUnion([choice]),
-                                'status': 'active' # Ensure player is marked active
+                                'status': 'active'
                             }, merge=True)
                             
                             st.success(f"Locked in: {choice}")
@@ -189,7 +193,6 @@ def main():
                 pick_team = p.get('team', 'Unknown')
                 
                 # Visibility Logic
-                # If it's too early AND it's not me, hide the team
                 if current_time < reveal_time and pick_user != username:
                     display_team = "HIDDEN 🔒"
                 else:
