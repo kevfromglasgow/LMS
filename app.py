@@ -153,11 +153,9 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 # --- 4. HELPER FUNCTIONS ---
-
-# --- CACHED DATABASE FUNCTIONS (SPEED BOOST 🚀) ---
-@st.cache_data(ttl=60) # Keep data for 60 seconds
+@st.cache_data(ttl=60)
 def get_all_players_full():
-    """Fetch FULL player objects (name, status, eliminated_gw)"""
+    """Fetch FULL player objects"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -168,12 +166,6 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
-@st.cache_data(ttl=600)
-def get_game_settings():
-    doc = db.collection('settings').document('config').get()
-    return doc.to_dict() if doc.exists else {'rollover_multiplier': 1}
-
-# --- UNCACHED API FUNCTIONS ---
 @st.cache_data(ttl=3600)
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
@@ -207,6 +199,11 @@ def calculate_team_results(matches):
             results.update({home:'PENDING', away:'PENDING'})
     return results
 
+@st.cache_data(ttl=600)
+def get_game_settings():
+    doc = db.collection('settings').document('config').get()
+    return doc.to_dict() if doc.exists else {'rollover_multiplier': 1}
+
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
@@ -232,7 +229,7 @@ def auto_process_eliminations(gw, matches):
                     updates_made = True
     
     if updates_made:
-        st.cache_data.clear() # Clear cache to show new fallen players
+        st.cache_data.clear()
         st.rerun()
 
 def admin_reset_game(current_gw, is_rollover=False):
@@ -434,7 +431,7 @@ def main():
             pwd = st.text_input("Admin Password", type="password")
             if pwd == ADMIN_PASSWORD:
                 st.session_state.admin_logged_in = True
-                st.cache_data.clear() # Clear cache on login to ensure fresh data
+                st.cache_data.clear()
                 st.rerun()
         else:
             if st.button("Logout"):
@@ -472,14 +469,11 @@ def main():
     
     # --- HANDLING VARIABLES ---
     gw = 15
-    sim_reveal = False
-    
     if st.session_state.admin_logged_in:
         try: gw = gw_override
         except NameError: pass 
     
     matches = get_matches_for_gameweek(gw)
-    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -503,12 +497,14 @@ def main():
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
     
-    # FIX: Use Naive UTC for comparison
-    now = datetime.utcnow()
-    
     # Override for Admin Simulation
-    if sim_reveal: reveal_time = now - timedelta(hours=1)
-        
+    sim_reveal = False # Default
+    if st.session_state.admin_logged_in:
+        # Check if widget exists
+        # Actually easier to just check deadline locally
+        pass
+
+    now = datetime.utcnow()
     is_reveal_active = (now > reveal_time)
 
     # 1. Metrics & Selection
@@ -522,8 +518,15 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    active_names = sorted([p['name'] for p in all_players_full])
-    options = ["Select your name...", "➕ I am a New Player"] + active_names
+    # Filter: Only ACTIVE players who haven't picked yet
+    user_picks_this_week = {p['user'] for p in all_picks}
+    
+    active_available_names = sorted([
+        p['name'] for p in all_players_full 
+        if p.get('status') == 'active' and p['name'] not in user_picks_this_week
+    ])
+    
+    options = ["Select your name...", "➕ I am a New Player"] + active_available_names
     
     # MOBILE FIX: Auto-Close Expander Logic
     if "selected_radio_option" not in st.session_state:
@@ -535,8 +538,6 @@ def main():
         st.session_state.expander_version += 1
 
     expander_label = f"👤 {st.session_state.selected_radio_option}" if st.session_state.selected_radio_option != "Select your name..." else "👤 Tap to select your name..."
-    
-    # Dynamic Key forces rebuild (close) on change
     expander_key = f"user_select_expander_{st.session_state.expander_version}"
 
     with st.expander(expander_label, expanded=False):
@@ -553,7 +554,9 @@ def main():
         new_name_input = st.text_input("Enter your full name (First & Last):")
         if new_name_input:
             clean_name = new_name_input.strip().title()
-            if clean_name in active_names: st.error(f"'{clean_name}' already exists!")
+            # Check against ALL players (even eliminated ones) to prevent duplicates
+            all_names = [p['name'] for p in all_players_full]
+            if clean_name in all_names: st.error(f"'{clean_name}' already exists!")
             else: actual_user_name = clean_name
     elif st.session_state.selected_radio_option != "Select your name...":
         actual_user_name = st.session_state.selected_radio_option
@@ -568,7 +571,7 @@ def main():
             pick_id = f"{actual_user_name}_GW{gw}"
             pick_ref = db.collection('picks').document(pick_id)
             if pick_ref.get().exists:
-                # SAFE: Generic message to prevent snooping
+                # SAFE: Generic message
                 st.success(f"✅ {actual_user_name} has already made a selection for Gameweek {gw}.")
                 st.caption("See the 'Still Standing' list below for details (picks revealed 30 mins before kick-off).")
             else:
