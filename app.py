@@ -250,7 +250,7 @@ def main():
         st.markdown("""
             <div class="hero-container">
                 <div class="hero-title">LAST MAN STANDING</div>
-                <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
+                <div class="hero-subtitle">PREMIER LEAGUE 25/26</div>
             </div>
         """, unsafe_allow_html=True)
 
