@@ -80,7 +80,17 @@ def inject_custom_css():
             opacity: 0.8;
         }
         
-        .pc-name { font-size: 16px; font-weight: 700; color: #fff; flex: 1; text-align: left; }
+        /* --- FIX: NAME WRAPPING --- */
+        .pc-name { 
+            font-size: 16px; font-weight: 700; color: #fff; 
+            flex: 1; text-align: left;
+            /* Allow wrapping */
+            white-space: normal; 
+            word-wrap: break-word;
+            line-height: 1.2; /* Tighter line height for wrapped text */
+            padding-right: 10px; /* Space between name and badge */
+        }
+        
         .pc-center { flex: 0 0 100px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .pc-badge { width: 35px; height: 35px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
         
@@ -171,9 +181,8 @@ def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
-        # If API returns matches, use that gameweek. If season over, return 38.
         return r.json()['matches'][0]['matchday'] if r.json()['matches'] else 38
-    except: return 15 # Fallback if API fails
+    except: return 15
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
@@ -183,7 +192,18 @@ def get_matches_for_gameweek(gw):
         return r.json()['matches']
     except: return []
 
+def format_deadline_date(dt):
+    """Formats datetime to 'Sat 6th Dec 12:30'"""
+    day = dt.day
+    if 4 <= day <= 20 or 24 <= day <= 30:
+        suffix = "th"
+    else:
+        suffix = ["st", "nd", "rd"][day % 10 - 1]
+    
+    return dt.strftime(f"%a {day}{suffix} %b %H:%M")
+
 def get_gameweek_deadline(matches):
+    # Fix: remove Z to make utc-naive
     dates = [datetime.fromisoformat(m['utcDate'].replace('Z', '')) for m in matches]
     return min(dates) if dates else datetime.utcnow()
 
@@ -358,25 +378,21 @@ def main():
             st.success("✅ Logged In")
             st.divider()
             
-            # Show current API gameweek for reference
             real_gw = get_current_gameweek_from_api() 
-            st.info(f"API says: Gameweek {real_gw}")
-            
-            # --- LIVE: ALWAYS USE REAL GAMEWEEK ---
-            # I removed the override slider so you don't accidentally leave it on GW15
-            # We will use 'real_gw' in the main app logic
+            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
             
             st.divider()
             if st.button("🔄 ROLLOVER (Everyone Lost)"):
-                msg = admin_reset_game(real_gw, is_rollover=True)
+                msg = admin_reset_game(gw_override, is_rollover=True)
                 st.warning(msg)
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚠️ HARD RESET (New Season)"):
-                msg = admin_reset_game(real_gw, is_rollover=False)
+                msg = admin_reset_game(gw_override, is_rollover=False)
                 st.success(msg)
                 st.cache_data.clear()
                 st.rerun()
+            # Removed import button for production cleanliness
 
     st.markdown("""
         <div class="hero-container">
@@ -385,10 +401,18 @@ def main():
         </div>
     """, unsafe_allow_html=True)
     
-    # --- GET LIVE GAMEWEEK ---
-    gw = get_current_gameweek_from_api()
-    matches = get_matches_for_gameweek(gw)
+    # --- HANDLING VARIABLES ---
+    gw = 15
+    sim_reveal = False
     
+    if st.session_state.admin_logged_in:
+        try: gw = gw_override
+        except NameError: pass 
+    else:
+        # LIVE MODE: Use API
+        gw = get_current_gameweek_from_api()
+    
+    matches = get_matches_for_gameweek(gw)
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -402,7 +426,7 @@ def main():
     settings = get_game_settings()
     multiplier = settings.get('rollover_multiplier', 1)
     
-    # --- DEADLINE LOGIC ---
+    # --- REAL DEADLINE LOGIC ---
     upcoming = [m for m in matches if m['status'] == 'SCHEDULED']
     if upcoming:
         first_kickoff = get_gameweek_deadline(upcoming)
@@ -421,12 +445,13 @@ def main():
     pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     with c1: st.metric(pot_label, f"£{pot_total}")
-    with c2: st.metric("DEADLINE", deadline.strftime("%a %H:%M"))
+    # FORMAT DATE FIX
+    formatted_deadline = format_deadline_date(deadline)
+    with c2: st.metric("DEADLINE", formatted_deadline)
 
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # Filter: Active players who have NOT picked yet
     user_picks_this_week = {p['user'] for p in all_picks}
     active_available_names = sorted([
         p['name'] for p in all_players_full 
@@ -445,8 +470,17 @@ def main():
         st.session_state.expander_version += 1
 
     expander_label = f"👤 {st.session_state.selected_radio_option}" if st.session_state.selected_radio_option != "Select your name..." else "👤 Tap to select your name..."
+    # Force rebuild with new key
+    expander_key = f"user_select_expander_{st.session_state.expander_version}"
+
+    # We use a container to hold the expander so we can clear/rebuild it if needed, 
+    # but the key change in the widget loop usually handles it.
     
-    # Only show picker if you haven't picked yet
+    # NOTE: Streamlit expanders don't accept a key directly to force close, 
+    # but placing the widget inside a conditional or using session state for content works.
+    # The radio callback updates the state, triggering a rerun. 
+    # We simply set expanded=False every time the script runs.
+    
     with st.expander(expander_label, expanded=False):
         st.radio(
             "List of Players:", 
