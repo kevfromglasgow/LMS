@@ -224,7 +224,7 @@ def get_current_gameweek_from_api():
         
         # 5. Add BUFFER: 135 mins (90 play + 15 HT + 30 extra)
         # If we are currently BEFORE (Last_Kickoff + 135 mins), we stay on previous week.
-        buffer_time = last_kickoff + timedelta(minutes=135)
+        buffer_time = last_kickoff + timedelta(minutes=120)
         
         if datetime.utcnow() < buffer_time:
             return prev_gw
