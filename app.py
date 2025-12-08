@@ -84,13 +84,10 @@ def inject_custom_css():
         .pc-name { 
             font-size: 16px; font-weight: 700; color: #fff; 
             flex: 1; text-align: left;
-            
-            /* CRITICAL FIXES FOR MOBILE WRAPPING */
-            white-space: normal !important;       /* Force wrap */
-            overflow-wrap: break-word !important; /* Break long words if needed */
-            word-wrap: break-word !important;     /* Legacy support */
-            min-width: 0 !important;              /* Allows flex child to shrink below content size */
-            
+            white-space: normal !important;       
+            overflow-wrap: break-word !important; 
+            word-wrap: break-word !important;     
+            min-width: 0 !important;              
             line-height: 1.2; 
             padding-right: 10px; 
         }
@@ -141,14 +138,17 @@ def inject_custom_css():
             background-color: #28002B !important;
         }
         
-        /* ROLLOVER BANNER */
-        .rollover-banner {
-            background-color: #ff4b4b; color: white; text-align: center;
-            padding: 15px; border-radius: 10px; margin-bottom: 20px;
-            font-family: 'Teko', sans-serif; font-size: 30px; font-weight: 700;
-            letter-spacing: 2px; box-shadow: 0 0 20px rgba(255, 75, 75, 0.6);
-            animation: pulse 2s infinite;
+        /* BANNER STYLES */
+        .banner-container {
+            text-align: center; padding: 20px; border-radius: 10px; margin-bottom: 20px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); animation: pulse 2s infinite;
         }
+        .banner-rollover { background-color: #ff4b4b; color: white; box-shadow: 0 0 20px rgba(255, 75, 75, 0.6); }
+        .banner-winner { background-color: #FFD700; color: #28002B; box-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
+        
+        .banner-title { font-family: 'Teko', sans-serif; font-size: 36px; font-weight: 700; margin: 0; line-height: 1; }
+        .banner-subtitle { font-family: 'Helvetica Neue', sans-serif; font-size: 16px; font-weight: 600; margin-top: 5px; }
+        
         @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.02);} 100% {transform:scale(1);} }
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
@@ -269,6 +269,86 @@ def admin_reset_game(current_gw, is_rollover=False):
     update_game_settings(new_mult)
     return "ROLLOVER!" if is_rollover else "RESET!"
 
+def bulk_import_history():
+    def fix_team(t):
+        mapping = {
+            "Bournemouth": "AFC Bournemouth", "Arsenal": "Arsenal FC", "Chelsea": "Chelsea FC",
+            "Brighton": "Brighton & Hove Albion FC", "Aston Villa": "Aston Villa FC",
+            "Manchester City": "Manchester City FC", "Manchester United": "Manchester United FC",
+            "Newcastle": "Newcastle United FC", "Crystal Palace": "Crystal Palace FC",
+            "Fulham": "Fulham FC", "Nottingham Forest": "Nottingham Forest FC",
+            "Liverpool": "Liverpool FC", "West Ham": "West Ham United FC",
+            "Sunderland": "Sunderland AFC", "Brentford": "Brentford FC",
+            "Wolverhampton Wanderers": "Wolverhampton Wanderers FC"
+        }
+        return mapping.get(t, t + " FC" if "FC" not in t else t)
+
+    RAW_DATA = {
+        "Aidan Mannion": ["Bournemouth", "Arsenal", "Chelsea", "Brighton", "Aston Villa", "Manchester City", "Manchester United"],
+        "Alan Comiskey": ["Chelsea"],
+        "Barry Mackintosh": ["Chelsea"],
+        "Clevon Beadle": ["Manchester City"],
+        "Colin Jackson": ["Manchester United", "Sunderland"],
+        "Colin Taylor": ["Chelsea"],
+        "Connor Smith": ["Bournemouth", "Arsenal", "Chelsea", "Liverpool"],
+        "Conor Brady": ["Bournemouth", "Arsenal", "Crystal Palace"],
+        "Danny Mulgrew": ["Chelsea"],
+        "Drew Boult": ["Arsenal", "Manchester United"],
+        "Fraser Robson": ["Bournemouth", "Manchester United"],
+        "Gary McIntyre": ["Manchester City"],
+        "John McAllister": ["Chelsea"],
+        "Jonathan McCormack": ["Manchester City"],
+        "Katie Arnold": ["Newcastle", "Arsenal", "Chelsea", "Aston Villa", "Manchester City", "Crystal Palace", "Brighton"],
+        "Kevin Dorward": ["Chelsea"],
+        "Kyle Goldie": ["Manchester City"],
+        "Kirsti Chalmers": ["Chelsea"],
+        "Lee Brady": ["Newcastle", "Fulham", "Nottingham Forest", "Bournemouth"],
+        "Liam Samuels": ["Newcastle", "Manchester United"],
+        "Lyndon Rambottom": ["Arsenal", "Brighton", "Chelsea", "Liverpool"],
+        "Mark Roberts": ["Chelsea"],
+        "Martin Brady": ["Chelsea"],
+        "Max Dougall": ["Bournemouth", "Arsenal", "Chelsea", "Crystal Palace", "Aston Villa", "Manchester United", "Liverpool"],
+        "Michael Cumming": ["Chelsea"],
+        "Michael Gallagher": ["Newcastle", "Arsenal", "West Ham", "Liverpool"],
+        "Michael Mullen": ["Manchester City"],
+        "Nathanael Samuels": ["Chelsea"],
+        "Phil McLean": ["Chelsea"],
+        "Richard Cartner": ["Newcastle", "Sunderland"],
+        "Scott Hendry": ["Manchester City"],
+        "Sean Flatley": ["Manchester City"],
+        "Stan Payne": ["Wolverhampton Wanderers"],
+        "Theo Samuels": ["Newcastle", "Manchester City", "West Ham", "Chelsea", "Brentford", "Arsenal"],
+        "Thomas Kolakovic": ["Chelsea"],
+        "Thomas McArthur": ["Manchester City"],
+        "Tom Wright": ["Chelsea"],
+        "Zach Smith-Palmieri": ["Chelsea"]
+    }
+
+    count_players = 0
+    for name, picks in RAW_DATA.items():
+        is_active = (len(picks) == 7)
+        status = 'active' if is_active else 'eliminated'
+        eliminated_gw = (len(picks) + 8) if not is_active else None 
+        used_teams = []
+        for i, raw_team in enumerate(picks):
+            gw = i + 9
+            team_name = fix_team(raw_team)
+            used_teams.append(team_name)
+            result = 'WIN'
+            if not is_active and i == len(picks) - 1: result = 'LOSS'
+            
+            db.collection('picks').document(f"{name}_GW{gw}").set({
+                'user': name, 'team': team_name, 'matchday': gw, 
+                'timestamp': datetime.now(), 'result': result
+            })
+
+        db.collection('players').document(name).set({
+            'name': name, 'status': status, 'used_teams': used_teams, 
+            'eliminated_gw': eliminated_gw, 'email': '', 'password': ''
+        })
+        count_players += 1
+    return count_players
+
 def display_player_status(picks, matches, players_data, reveal_mode=False):
     st.subheader("STILL STANDING")
     team_results = calculate_team_results(matches)
@@ -380,6 +460,26 @@ def main():
             st.success("✅ Logged In")
             st.divider()
             
+            # --- SIMULATION TOOLS ---
+            if "sim_winner" not in st.session_state: st.session_state.sim_winner = False
+            if "sim_rollover" not in st.session_state: st.session_state.sim_rollover = False
+            
+            st.subheader("Test Controls")
+            if st.button("🏆 Toggle Sim Winner"):
+                st.session_state.sim_winner = not st.session_state.sim_winner
+                st.session_state.sim_rollover = False # Exclusive
+                st.rerun()
+                
+            if st.button("💀 Toggle Sim Rollover"):
+                st.session_state.sim_rollover = not st.session_state.sim_rollover
+                st.session_state.sim_winner = False # Exclusive
+                st.rerun()
+            
+            if st.session_state.sim_winner: st.warning("⚠️ Simulating WINNER")
+            if st.session_state.sim_rollover: st.warning("⚠️ Simulating ROLLOVER")
+            
+            st.divider()
+            
             real_gw = get_current_gameweek_from_api() 
             gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
             
@@ -394,24 +494,25 @@ def main():
                 st.success(msg)
                 st.cache_data.clear()
                 st.rerun()
-            # Removed import button for production cleanliness
+            if st.button("⚡ Inject Spreadsheet Data"):
+                count = bulk_import_history()
+                st.success(f"Imported {count} players!")
+                st.cache_data.clear()
+                st.rerun()
 
     st.markdown("""
         <div class="hero-container">
             <div class="hero-title">LAST MAN STANDING</div>
-            <div class="hero-subtitle">PREMIER LEAGUE 25/26</div>
+            <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
         </div>
     """, unsafe_allow_html=True)
     
     # --- HANDLING VARIABLES ---
     gw = 15
-    sim_reveal = False
-    
     if st.session_state.admin_logged_in:
         try: gw = gw_override
         except NameError: pass 
     else:
-        # LIVE MODE: Use API
         gw = get_current_gameweek_from_api()
     
     matches = get_matches_for_gameweek(gw)
@@ -449,9 +550,13 @@ def main():
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     with c1: st.metric(pot_label, f"£{pot_total}")
     
-    # FORMAT DATE FIX
-    formatted_deadline = format_deadline_date(deadline)
-    with c2: st.metric("DEADLINE", formatted_deadline)
+    # --- DEADLINE TEXT LOGIC ---
+    if now > deadline:
+        deadline_text = "EXPIRED"
+    else:
+        deadline_text = format_deadline_date(deadline)
+        
+    with c2: st.metric("DEADLINE", deadline_text)
 
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
@@ -530,10 +635,43 @@ def main():
 
     st.markdown("---")
     
-    # --- CHECK FOR ROLLOVER INCOMING ---
+    # --- COUNT ACTIVE PLAYERS ---
+    # Apply Simulations if Admin toggled them
+    
+    # 1. Base Count
     active_count = len([p for p in all_players_full if p.get('status') == 'active'])
+    
+    # 2. Apply Overrides
+    if st.session_state.get('sim_winner', False):
+        active_count = 1
+    elif st.session_state.get('sim_rollover', False):
+        active_count = 0
+        
+    # --- BANNER LOGIC ---
     if active_count == 0 and len(all_players_full) > 0:
-        st.markdown("""<div class="rollover-banner">💀 GAME OVER: ROLLOVER INCOMING 💀</div>""", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="banner-container banner-rollover">
+            <div class="banner-title">💀 GAME OVER 💀</div>
+            <div class="banner-subtitle">ROLLOVER INCOMING</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    elif active_count == 1:
+        # Find winner name
+        if st.session_state.get('sim_winner', False):
+            winner_name = "TEST WINNER"
+        else:
+            # Safe logic to find actual winner
+            actives = [p['name'] for p in all_players_full if p.get('status') == 'active']
+            winner_name = actives[0] if actives else "Unknown"
+            
+        st.markdown(f"""
+        <div class="banner-container banner-winner">
+            <div class="banner-title">🏆 WE HAVE A WINNER! 🏆</div>
+            <div class="banner-subtitle">{winner_name} has won £{pot_total}</div>
+            <div style="font-size:12px; margin-top:5px;">A new game will begin soon.</div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # 3. Status & Fixtures
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
