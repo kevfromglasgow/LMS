@@ -513,7 +513,7 @@ def main():
 
     st.markdown("""
         <div class="hero-container">
-            <img src="https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Premier_League_Logo.svg/2560px-Premier_League_Logo.svg.png" class="hero-logo">
+            <img src="https://cdn.freebiesupply.com/images/large/2x/premier-league-logo-black-and-white.png" class="hero-logo">
             <div class="hero-title">LAST MAN STANDING</div>
             <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
         </div>
