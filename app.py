@@ -51,13 +51,13 @@ def inject_custom_css():
             margin-bottom: 30px;
         }
 
-        /* NEW: Logo Style */
+        /* NEW: Logo Style with INVERT */
         .hero-logo {
-            width: 130px;
+            width: 200px; /* Increased width slightly for this wider logo format */
             height: auto;
             margin-bottom: 15px;
-            /* Adds a subtle glow to make it stand out from dark background */
-            filter: drop-shadow(0 0 10px rgba(255,255,255,0.2));
+            /* invert(1) turns black to white. drop-shadow adds the glow. */
+            filter: invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
         }
 
         .hero-title {
