@@ -204,7 +204,7 @@ def get_current_gameweek_from_api():
         # Buffer logic: Last Kickoff + 135 mins
         last_kickoff_str = max([m['utcDate'] for m in matches_prev])
         last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
-        buffer_time = last_kickoff + timedelta(minutes=135)
+        buffer_time = last_kickoff + timedelta(minutes=125)
         
         if datetime.utcnow() < buffer_time:
             return prev_gw
