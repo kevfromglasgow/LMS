@@ -515,7 +515,7 @@ def main():
         <div class="hero-container">
             <img src="https://cdn.freebiesupply.com/images/large/2x/premier-league-logo-black-and-white.png" class="hero-logo">
             <div class="hero-title">LAST MAN STANDING</div>
-            <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
+            <div class="hero-subtitle">SEASON 25/26</div>
         </div>
     """, unsafe_allow_html=True)
     
