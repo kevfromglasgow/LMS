@@ -187,6 +187,30 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
+@st.cache_data(ttl=3600)
+def get_current_gameweek_from_api():
+    headers = {'X-Auth-Token': API_KEY}
+    try:
+        r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
+        data = r.json()
+        if not data.get('matches'): return 38
+        suggested_gw = data['matches'][0]['matchday']
+        
+        prev_gw = suggested_gw - 1
+        if prev_gw < 1: return suggested_gw
+        matches_prev = get_matches_for_gameweek(prev_gw)
+        if not matches_prev: return suggested_gw
+        
+        # Buffer logic: Last Kickoff + 135 mins
+        last_kickoff_str = max([m['utcDate'] for m in matches_prev])
+        last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
+        buffer_time = last_kickoff + timedelta(minutes=135)
+        
+        if datetime.utcnow() < buffer_time:
+            return prev_gw
+        return suggested_gw
+    except: return 15
+
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
     headers = {'X-Auth-Token': API_KEY}
@@ -194,44 +218,6 @@ def get_matches_for_gameweek(gw):
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?matchday={gw}", headers=headers)
         return r.json()['matches']
     except: return []
-
-# --- 🧠 SMART GAMEWEEK LOGIC ---
-@st.cache_data(ttl=600)
-def get_current_gameweek_from_api():
-    headers = {'X-Auth-Token': API_KEY}
-    try:
-        # 1. Ask API for next SCHEDULED match
-        r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
-        data = r.json()
-        
-        # If season finished, return 38
-        if not data.get('matches'): return 38
-        
-        suggested_gw = data['matches'][0]['matchday']
-        
-        # 2. Check the PREVIOUS Gameweek
-        prev_gw = suggested_gw - 1
-        if prev_gw < 1: return suggested_gw
-        
-        # 3. Get matches for the previous gameweek
-        matches_prev = get_matches_for_gameweek(prev_gw)
-        
-        if not matches_prev: return suggested_gw
-        
-        # 4. Find the last kickoff time of the previous week
-        last_kickoff_str = max([m['utcDate'] for m in matches_prev])
-        last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
-        
-        # 5. Add BUFFER: 135 mins (90 play + 15 HT + 30 extra)
-        # If we are currently BEFORE (Last_Kickoff + 135 mins), we stay on previous week.
-        buffer_time = last_kickoff + timedelta(minutes=120)
-        
-        if datetime.utcnow() < buffer_time:
-            return prev_gw
-            
-        return suggested_gw
-        
-    except: return 15 # Fallback
 
 def format_deadline_date(dt):
     day = dt.day
@@ -281,6 +267,7 @@ def auto_process_eliminations(gw, matches):
             
             if player_data.exists:
                 current_status = player_data.to_dict().get('status')
+                # Auto eliminate active players who lost
                 if current_status == 'active':
                     player_ref.update({'status': 'eliminated', 'eliminated_gw': gw})
                     updates_made = True
@@ -291,8 +278,10 @@ def auto_process_eliminations(gw, matches):
 
 def admin_reset_game(current_gw, is_rollover=False):
     docs = db.collection('players').stream()
+    # PENDING LOGIC: Reset to 'pending', so pot builds as they play
     for doc in docs:
-        db.collection('players').document(doc.id).update({'status': 'active', 'used_teams': [], 'eliminated_gw': None})
+        db.collection('players').document(doc.id).update({'status': 'pending', 'used_teams': [], 'eliminated_gw': None})
+    
     picks = db.collection('picks').where('matchday', '==', current_gw).stream()
     for pick in picks:
         db.collection('picks').document(pick.id).delete()
@@ -405,7 +394,7 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         elif status == 'active' and result == 'LOSE':
             p['pending_elimination'] = True 
             eliminated_players.append(p)
-        else:
+        elif status == 'active': # Only show active players in "Still Standing"
             active_players.append(p)
             
     active_players.sort(key=lambda x: x['name'])
@@ -495,16 +484,16 @@ def main():
             st.divider()
             
             real_gw = get_current_gameweek_from_api() 
-            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
+            st.info(f"API says: Gameweek {real_gw}")
             
             st.divider()
             if st.button("🔄 ROLLOVER (Everyone Lost)"):
-                msg = admin_reset_game(gw_override, is_rollover=True)
+                msg = admin_reset_game(real_gw, is_rollover=True)
                 st.warning(msg)
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚠️ HARD RESET (New Season)"):
-                msg = admin_reset_game(gw_override, is_rollover=False)
+                msg = admin_reset_game(real_gw, is_rollover=False)
                 st.success(msg)
                 st.cache_data.clear()
                 st.rerun()
@@ -513,7 +502,7 @@ def main():
                 st.success(f"Imported {count} players!")
                 st.cache_data.clear()
                 st.rerun()
-            
+                
             # SIMULATION TOOLS
             st.divider()
             st.subheader("Test Simulations")
@@ -524,7 +513,7 @@ def main():
                 st.session_state.sim_winner = not st.session_state.sim_winner
                 st.session_state.sim_rollover = False
                 st.rerun()
-            
+                
             if st.button("💀 Toggle Sim Rollover"):
                 st.session_state.sim_rollover = not st.session_state.sim_rollover
                 st.session_state.sim_winner = False
@@ -542,17 +531,13 @@ def main():
     """, unsafe_allow_html=True)
     
     # --- HANDLING VARIABLES ---
-    gw = 15
+    gw = get_current_gameweek_from_api()
     sim_reveal = False
     
-    if st.session_state.admin_logged_in:
-        try: gw = gw_override
-        except NameError: pass 
-    else:
-        gw = get_current_gameweek_from_api()
+    # Allow override via sidebar if needed, but default to API
+    # (Since slider removed, this is purely API driven now)
     
     matches = get_matches_for_gameweek(gw)
-    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -585,10 +570,14 @@ def main():
     # 1. Metrics & Selection
     st.write("")
     c1, c2 = st.columns(2)
-    pot_total = len(all_players_full) * ENTRY_FEE * multiplier
+    
+    # POT: Active + Eliminated (Ignore Pending)
+    # This ensures pot starts at 0 and grows as players join (become active)
+    paid_players = len([p for p in all_players_full if p.get('status') in ['active', 'eliminated']])
+    pot_total = paid_players * ENTRY_FEE * multiplier
+    
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
     
-    # --- DEADLINE TEXT LOGIC ---
     if now > deadline: deadline_text = "EXPIRED"
     else: deadline_text = format_deadline_date(deadline)
         
@@ -598,16 +587,17 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # Filter: Active players who have NOT picked yet
+    # Filter: Show 'active' AND 'pending' players in dropdown
+    # But hide those who already picked this week
     user_picks_this_week = {p['user'] for p in all_picks}
-    active_available_names = sorted([
+    
+    available_names = sorted([
         p['name'] for p in all_players_full 
-        if p.get('status') == 'active' and p['name'] not in user_picks_this_week
+        if p.get('status') in ['active', 'pending'] and p['name'] not in user_picks_this_week
     ])
     
-    options = ["Select your name...", "➕ I am a New Player"] + active_available_names
+    options = ["Select your name...", "➕ I am a New Player"] + available_names
     
-    # MOBILE FIX: Auto-Close Expander
     if "selected_radio_option" not in st.session_state:
         st.session_state.selected_radio_option = "Select your name..."
     if "expander_version" not in st.session_state:
@@ -675,6 +665,7 @@ def main():
     # --- BANNER LOGIC ---
     active_count = len([p for p in all_players_full if p.get('status') == 'active'])
     
+    # Simulations
     sim_w = st.session_state.get('sim_winner', False)
     sim_r = st.session_state.get('sim_rollover', False)
     
