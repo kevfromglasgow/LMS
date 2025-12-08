@@ -44,26 +44,11 @@ def inject_custom_css():
             background-attachment: fixed !important;
             background-repeat: no-repeat !important;
         }
-        
-        /* --- HERO SECTION STYLES --- */
-        .hero-container {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        /* NEW: Logo Style with INVERT */
-        .hero-logo {
-            width: 200px; /* Increased width slightly for this wider logo format */
-            height: auto;
-            margin-bottom: 15px;
-            /* invert(1) turns black to white. drop-shadow adds the glow. */
-            filter: invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
-        }
 
         .hero-title {
             font-family: 'Teko', sans-serif; font-size: 60px; font-weight: 700;
             text-transform: uppercase; color: #ffffff; letter-spacing: 2px;
-            margin: 0; line-height: 0.9; text-align: center;
+            margin: 0; line-height: 1; text-align: center;
             text-shadow: 0 0 10px rgba(0, 255, 135, 0.5);
         }
         .hero-subtitle {
@@ -164,6 +149,13 @@ def inject_custom_css():
         .banner-title { font-family: 'Teko', sans-serif; font-size: 36px; font-weight: 700; margin: 0; line-height: 1; }
         .banner-subtitle { font-family: 'Helvetica Neue', sans-serif; font-size: 16px; font-weight: 600; margin-top: 5px; }
         
+        /* HERO LOGO */
+        .hero-container { text-align: center; margin-bottom: 30px; }
+        .hero-logo {
+            width: 200px; height: auto; margin-bottom: 15px;
+            filter: invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
+        }
+        
         @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.02);} 100% {transform:scale(1);} }
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
@@ -184,6 +176,7 @@ def inject_custom_css():
 # --- 4. HELPER FUNCTIONS ---
 @st.cache_data(ttl=60)
 def get_all_players_full():
+    """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -194,14 +187,6 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
-@st.cache_data(ttl=3600)
-def get_current_gameweek_from_api():
-    headers = {'X-Auth-Token': API_KEY}
-    try:
-        r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
-        return r.json()['matches'][0]['matchday'] if r.json()['matches'] else 38
-    except: return 15
-
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
     headers = {'X-Auth-Token': API_KEY}
@@ -209,6 +194,44 @@ def get_matches_for_gameweek(gw):
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?matchday={gw}", headers=headers)
         return r.json()['matches']
     except: return []
+
+# --- 🧠 SMART GAMEWEEK LOGIC ---
+@st.cache_data(ttl=600)
+def get_current_gameweek_from_api():
+    headers = {'X-Auth-Token': API_KEY}
+    try:
+        # 1. Ask API for next SCHEDULED match
+        r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
+        data = r.json()
+        
+        # If season finished, return 38
+        if not data.get('matches'): return 38
+        
+        suggested_gw = data['matches'][0]['matchday']
+        
+        # 2. Check the PREVIOUS Gameweek
+        prev_gw = suggested_gw - 1
+        if prev_gw < 1: return suggested_gw
+        
+        # 3. Get matches for the previous gameweek
+        matches_prev = get_matches_for_gameweek(prev_gw)
+        
+        if not matches_prev: return suggested_gw
+        
+        # 4. Find the last kickoff time of the previous week
+        last_kickoff_str = max([m['utcDate'] for m in matches_prev])
+        last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
+        
+        # 5. Add BUFFER: 135 mins (90 play + 15 HT + 30 extra)
+        # If we are currently BEFORE (Last_Kickoff + 135 mins), we stay on previous week.
+        buffer_time = last_kickoff + timedelta(minutes=135)
+        
+        if datetime.utcnow() < buffer_time:
+            return prev_gw
+            
+        return suggested_gw
+        
+    except: return 15 # Fallback
 
 def format_deadline_date(dt):
     day = dt.day
@@ -471,26 +494,6 @@ def main():
             st.success("✅ Logged In")
             st.divider()
             
-            # --- SIMULATION TOOLS ---
-            if "sim_winner" not in st.session_state: st.session_state.sim_winner = False
-            if "sim_rollover" not in st.session_state: st.session_state.sim_rollover = False
-            
-            st.subheader("Test Controls")
-            if st.button("🏆 Toggle Sim Winner"):
-                st.session_state.sim_winner = not st.session_state.sim_winner
-                st.session_state.sim_rollover = False
-                st.rerun()
-                
-            if st.button("💀 Toggle Sim Rollover"):
-                st.session_state.sim_rollover = not st.session_state.sim_rollover
-                st.session_state.sim_winner = False
-                st.rerun()
-            
-            if st.session_state.sim_winner: st.warning("⚠️ Simulating WINNER")
-            if st.session_state.sim_rollover: st.warning("⚠️ Simulating ROLLOVER")
-            
-            st.divider()
-            
             real_gw = get_current_gameweek_from_api() 
             gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
             
@@ -510,12 +513,31 @@ def main():
                 st.success(f"Imported {count} players!")
                 st.cache_data.clear()
                 st.rerun()
+            
+            # SIMULATION TOOLS
+            st.divider()
+            st.subheader("Test Simulations")
+            if "sim_winner" not in st.session_state: st.session_state.sim_winner = False
+            if "sim_rollover" not in st.session_state: st.session_state.sim_rollover = False
+            
+            if st.button("🏆 Toggle Sim Winner"):
+                st.session_state.sim_winner = not st.session_state.sim_winner
+                st.session_state.sim_rollover = False
+                st.rerun()
+            
+            if st.button("💀 Toggle Sim Rollover"):
+                st.session_state.sim_rollover = not st.session_state.sim_rollover
+                st.session_state.sim_winner = False
+                st.rerun()
+            
+            if st.session_state.sim_winner: st.warning("Simulating WINNER")
+            if st.session_state.sim_rollover: st.warning("Simulating ROLLOVER")
 
     st.markdown("""
         <div class="hero-container">
             <img src="https://cdn.freebiesupply.com/images/large/2x/premier-league-logo-black-and-white.png" class="hero-logo">
             <div class="hero-title">LAST MAN STANDING</div>
-            <div class="hero-subtitle">SEASON 25/26</div>
+            <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -530,6 +552,7 @@ def main():
         gw = get_current_gameweek_from_api()
     
     matches = get_matches_for_gameweek(gw)
+    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -575,6 +598,7 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
+    # Filter: Active players who have NOT picked yet
     user_picks_this_week = {p['user'] for p in all_picks}
     active_available_names = sorted([
         p['name'] for p in all_players_full 
@@ -583,6 +607,7 @@ def main():
     
     options = ["Select your name...", "➕ I am a New Player"] + active_available_names
     
+    # MOBILE FIX: Auto-Close Expander
     if "selected_radio_option" not in st.session_state:
         st.session_state.selected_radio_option = "Select your name..."
     if "expander_version" not in st.session_state:
@@ -650,7 +675,6 @@ def main():
     # --- BANNER LOGIC ---
     active_count = len([p for p in all_players_full if p.get('status') == 'active'])
     
-    # Check if simulation is ON
     sim_w = st.session_state.get('sim_winner', False)
     sim_r = st.session_state.get('sim_rollover', False)
     
@@ -671,11 +695,9 @@ def main():
         if sim_w:
             show_winner = True
         else:
-            # SWEATY PALM CHECK: Verify they actually won
             survivor = next((p for p in all_players_full if p['status'] == 'active'), None)
             if survivor:
                 survivor_name = survivor['name']
-                # Check pick result
                 pick_data = next((p for p in all_picks if p['user'] == survivor_name), None)
                 if pick_data:
                     team_res = calculate_team_results(matches)
