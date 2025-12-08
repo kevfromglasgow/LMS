@@ -44,11 +44,26 @@ def inject_custom_css():
             background-attachment: fixed !important;
             background-repeat: no-repeat !important;
         }
+        
+        /* --- HERO SECTION STYLES --- */
+        .hero-container {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        /* NEW: Logo Style */
+        .hero-logo {
+            width: 130px;
+            height: auto;
+            margin-bottom: 15px;
+            /* Adds a subtle glow to make it stand out from dark background */
+            filter: drop-shadow(0 0 10px rgba(255,255,255,0.2));
+        }
 
         .hero-title {
             font-family: 'Teko', sans-serif; font-size: 60px; font-weight: 700;
             text-transform: uppercase; color: #ffffff; letter-spacing: 2px;
-            margin: 0; line-height: 1; text-align: center;
+            margin: 0; line-height: 0.9; text-align: center;
             text-shadow: 0 0 10px rgba(0, 255, 135, 0.5);
         }
         .hero-subtitle {
@@ -498,6 +513,7 @@ def main():
 
     st.markdown("""
         <div class="hero-container">
+            <img src="https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Premier_League_Logo.svg/2560px-Premier_League_Logo.svg.png" class="hero-logo">
             <div class="hero-title">LAST MAN STANDING</div>
             <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
         </div>
@@ -669,7 +685,7 @@ def main():
         if show_winner:
             st.markdown(f"""
             <div class="banner-container banner-winner">
-                <div class="banner-title">WE HAVE A WINNER!</div>
+                <div class="banner-title">🏆 WE HAVE A WINNER! 🏆</div>
                 <div class="banner-subtitle">{survivor_name} has won £{pot_total} - Congratulations!</div>
                 <div style="font-size:12px; margin-top:5px;">A new game will begin soon.</div>
             </div>
