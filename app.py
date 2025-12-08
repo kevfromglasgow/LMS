@@ -267,7 +267,6 @@ def auto_process_eliminations(gw, matches):
             
             if player_data.exists:
                 current_status = player_data.to_dict().get('status')
-                # Auto eliminate active players who lost
                 if current_status == 'active':
                     player_ref.update({'status': 'eliminated', 'eliminated_gw': gw})
                     updates_made = True
@@ -278,7 +277,7 @@ def auto_process_eliminations(gw, matches):
 
 def admin_reset_game(current_gw, is_rollover=False):
     docs = db.collection('players').stream()
-    # PENDING LOGIC: Reset to 'pending', so pot builds as they play
+    # Reset status to 'pending' so everyone has to repick to become 'active'
     for doc in docs:
         db.collection('players').document(doc.id).update({'status': 'pending', 'used_teams': [], 'eliminated_gw': None})
     
@@ -484,16 +483,16 @@ def main():
             st.divider()
             
             real_gw = get_current_gameweek_from_api() 
-            st.info(f"API says: Gameweek {real_gw}")
+            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
             
             st.divider()
             if st.button("🔄 ROLLOVER (Everyone Lost)"):
-                msg = admin_reset_game(real_gw, is_rollover=True)
+                msg = admin_reset_game(gw_override, is_rollover=True)
                 st.warning(msg)
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚠️ HARD RESET (New Season)"):
-                msg = admin_reset_game(real_gw, is_rollover=False)
+                msg = admin_reset_game(gw_override, is_rollover=False)
                 st.success(msg)
                 st.cache_data.clear()
                 st.rerun()
@@ -531,11 +530,14 @@ def main():
     """, unsafe_allow_html=True)
     
     # --- HANDLING VARIABLES ---
-    gw = get_current_gameweek_from_api()
+    gw = 15
     sim_reveal = False
     
-    # Allow override via sidebar if needed, but default to API
-    # (Since slider removed, this is purely API driven now)
+    if st.session_state.admin_logged_in:
+        try: gw = gw_override
+        except NameError: pass 
+    else:
+        gw = get_current_gameweek_from_api()
     
     matches = get_matches_for_gameweek(gw)
     if not matches:
@@ -572,7 +574,6 @@ def main():
     c1, c2 = st.columns(2)
     
     # POT: Active + Eliminated (Ignore Pending)
-    # This ensures pot starts at 0 and grows as players join (become active)
     paid_players = len([p for p in all_players_full if p.get('status') in ['active', 'eliminated']])
     pot_total = paid_players * ENTRY_FEE * multiplier
     
@@ -587,10 +588,9 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # Filter: Show 'active' AND 'pending' players in dropdown
-    # But hide those who already picked this week
     user_picks_this_week = {p['user'] for p in all_picks}
     
+    # Show active AND pending (but not already picked) in dropdown
     available_names = sorted([
         p['name'] for p in all_players_full 
         if p.get('status') in ['active', 'pending'] and p['name'] not in user_picks_this_week
@@ -663,14 +663,15 @@ def main():
     st.markdown("---")
     
     # --- BANNER LOGIC ---
-    active_count = len([p for p in all_players_full if p.get('status') == 'active'])
+    # NOTE: We look for ANY active/pending players for Rollover logic.
+    # If NO ONE is active/pending, it means everyone is eliminated.
+    survivors = [p for p in all_players_full if p.get('status') in ['active', 'pending']]
     
-    # Simulations
     sim_w = st.session_state.get('sim_winner', False)
     sim_r = st.session_state.get('sim_rollover', False)
     
     # 1. ROLLOVER (Everyone dead OR Sim Rollover)
-    if (active_count == 0 and len(all_players_full) > 0) or sim_r:
+    if (len(survivors) == 0 and len(all_players_full) > 0) or sim_r:
         st.markdown("""
         <div class="banner-container banner-rollover">
             <div class="banner-title">💀 GAME OVER 💀</div>
@@ -679,21 +680,24 @@ def main():
         """, unsafe_allow_html=True)
         
     # 2. WINNER (1 Active AND (Sim Winner OR Active Player Actually Won))
-    elif active_count == 1 or sim_w:
+    # Note: 'survivors' list includes Pending, so for a winner we check strictly Active==1 and Pending==0
+    active_survivors = [p for p in all_players_full if p.get('status') == 'active']
+    pending_survivors = [p for p in all_players_full if p.get('status') == 'pending']
+    
+    if (len(active_survivors) == 1 and len(pending_survivors) == 0) or sim_w:
         survivor_name = "TEST WINNER"
         show_winner = False
         
         if sim_w:
             show_winner = True
         else:
-            survivor = next((p for p in all_players_full if p['status'] == 'active'), None)
-            if survivor:
-                survivor_name = survivor['name']
-                pick_data = next((p for p in all_picks if p['user'] == survivor_name), None)
-                if pick_data:
-                    team_res = calculate_team_results(matches)
-                    if team_res.get(pick_data['team']) == 'WIN':
-                        show_winner = True
+            survivor = active_survivors[0]
+            survivor_name = survivor['name']
+            pick_data = next((p for p in all_picks if p['user'] == survivor_name), None)
+            if pick_data:
+                team_res = calculate_team_results(matches)
+                if team_res.get(pick_data['team']) == 'WIN':
+                    show_winner = True
 
         if show_winner:
             st.markdown(f"""
