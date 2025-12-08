@@ -169,7 +169,6 @@ def inject_custom_css():
 # --- 4. HELPER FUNCTIONS ---
 @st.cache_data(ttl=60)
 def get_all_players_full():
-    """Fetch FULL player objects (name, status, eliminated_gw)"""
     try:
         docs = db.collection('players').stream()
         return [doc.to_dict() for doc in docs]
@@ -197,12 +196,9 @@ def get_matches_for_gameweek(gw):
     except: return []
 
 def format_deadline_date(dt):
-    """Formats datetime to 'Sat 6th Dec 12:30'"""
     day = dt.day
-    if 4 <= day <= 20 or 24 <= day <= 30:
-        suffix = "th"
-    else:
-        suffix = ["st", "nd", "rd"][day % 10 - 1]
+    if 4 <= day <= 20 or 24 <= day <= 30: suffix = "th"
+    else: suffix = ["st", "nd", "rd"][day % 10 - 1]
     return dt.strftime(f"%a {day}{suffix} %b %H:%M")
 
 def get_gameweek_deadline(matches):
@@ -467,12 +463,12 @@ def main():
             st.subheader("Test Controls")
             if st.button("🏆 Toggle Sim Winner"):
                 st.session_state.sim_winner = not st.session_state.sim_winner
-                st.session_state.sim_rollover = False # Exclusive
+                st.session_state.sim_rollover = False
                 st.rerun()
                 
             if st.button("💀 Toggle Sim Rollover"):
                 st.session_state.sim_rollover = not st.session_state.sim_rollover
-                st.session_state.sim_winner = False # Exclusive
+                st.session_state.sim_winner = False
                 st.rerun()
             
             if st.session_state.sim_winner: st.warning("⚠️ Simulating WINNER")
@@ -509,6 +505,8 @@ def main():
     
     # --- HANDLING VARIABLES ---
     gw = 15
+    sim_reveal = False
+    
     if st.session_state.admin_logged_in:
         try: gw = gw_override
         except NameError: pass 
@@ -516,7 +514,6 @@ def main():
         gw = get_current_gameweek_from_api()
     
     matches = get_matches_for_gameweek(gw)
-    
     if not matches:
         st.warning("No matches found.")
         st.stop()
@@ -541,6 +538,9 @@ def main():
     reveal_time = first_kickoff - timedelta(minutes=30)
     
     now = datetime.utcnow()
+    # Override for Admin Simulation
+    if sim_reveal: reveal_time = now - timedelta(hours=1)
+        
     is_reveal_active = (now > reveal_time)
 
     # 1. Metrics & Selection
@@ -548,20 +548,17 @@ def main():
     c1, c2 = st.columns(2)
     pot_total = len(all_players_full) * ENTRY_FEE * multiplier
     pot_label = f"💰 ROLLOVER POT ({multiplier}x)" if multiplier > 1 else "💰 Prize Pot"
-    with c1: st.metric(pot_label, f"£{pot_total}")
     
     # --- DEADLINE TEXT LOGIC ---
-    if now > deadline:
-        deadline_text = "EXPIRED"
-    else:
-        deadline_text = format_deadline_date(deadline)
+    if now > deadline: deadline_text = "EXPIRED"
+    else: deadline_text = format_deadline_date(deadline)
         
+    with c1: st.metric(pot_label, f"£{pot_total}")
     with c2: st.metric("DEADLINE", deadline_text)
 
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
-    # Filter: Active players who have NOT picked yet
     user_picks_this_week = {p['user'] for p in all_picks}
     active_available_names = sorted([
         p['name'] for p in all_players_full 
@@ -570,7 +567,6 @@ def main():
     
     options = ["Select your name...", "➕ I am a New Player"] + active_available_names
     
-    # MOBILE FIX: Auto-Close Expander
     if "selected_radio_option" not in st.session_state:
         st.session_state.selected_radio_option = "Select your name..."
     if "expander_version" not in st.session_state:
@@ -629,26 +625,21 @@ def main():
                                 pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
                                 user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
                                 st.success(f"✅ Pick Locked In for {actual_user_name}!")
-                                st.cache_data.clear() # CLEAR CACHE ON SUBMIT
+                                st.cache_data.clear() 
                                 st.rerun()
                     if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
 
     st.markdown("---")
     
-    # --- COUNT ACTIVE PLAYERS ---
-    # Apply Simulations if Admin toggled them
-    
-    # 1. Base Count
+    # --- BANNER LOGIC ---
     active_count = len([p for p in all_players_full if p.get('status') == 'active'])
     
-    # 2. Apply Overrides
-    if st.session_state.get('sim_winner', False):
-        active_count = 1
-    elif st.session_state.get('sim_rollover', False):
-        active_count = 0
-        
-    # --- BANNER LOGIC ---
-    if active_count == 0 and len(all_players_full) > 0:
+    # Check if simulation is ON
+    sim_w = st.session_state.get('sim_winner', False)
+    sim_r = st.session_state.get('sim_rollover', False)
+    
+    # 1. ROLLOVER (Everyone dead OR Sim Rollover)
+    if (active_count == 0 and len(all_players_full) > 0) or sim_r:
         st.markdown("""
         <div class="banner-container banner-rollover">
             <div class="banner-title">💀 GAME OVER 💀</div>
@@ -656,22 +647,33 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-    elif active_count == 1:
-        # Find winner name
-        if st.session_state.get('sim_winner', False):
-            winner_name = "TEST WINNER"
+    # 2. WINNER (1 Active AND (Sim Winner OR Active Player Actually Won))
+    elif active_count == 1 or sim_w:
+        survivor_name = "TEST WINNER"
+        show_winner = False
+        
+        if sim_w:
+            show_winner = True
         else:
-            # Safe logic to find actual winner
-            actives = [p['name'] for p in all_players_full if p.get('status') == 'active']
-            winner_name = actives[0] if actives else "Unknown"
-            
-        st.markdown(f"""
-        <div class="banner-container banner-winner">
-            <div class="banner-title">🏆 WE HAVE A WINNER! 🏆</div>
-            <div class="banner-subtitle">{winner_name} has won £{pot_total}</div>
-            <div style="font-size:12px; margin-top:5px;">A new game will begin soon.</div>
-        </div>
-        """, unsafe_allow_html=True)
+            # SWEATY PALM CHECK: Verify they actually won
+            survivor = next((p for p in all_players_full if p['status'] == 'active'), None)
+            if survivor:
+                survivor_name = survivor['name']
+                # Check pick result
+                pick_data = next((p for p in all_picks if p['user'] == survivor_name), None)
+                if pick_data:
+                    team_res = calculate_team_results(matches)
+                    if team_res.get(pick_data['team']) == 'WIN':
+                        show_winner = True
+
+        if show_winner:
+            st.markdown(f"""
+            <div class="banner-container banner-winner">
+                <div class="banner-title">WE HAVE A WINNER!</div>
+                <div class="banner-subtitle">{survivor_name} has won £{pot_total} - Congratulations!</div>
+                <div style="font-size:12px; margin-top:5px;">A new game will begin soon.</div>
+            </div>
+            """, unsafe_allow_html=True)
 
     # 3. Status & Fixtures
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
