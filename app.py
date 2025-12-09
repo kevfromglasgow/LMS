@@ -200,6 +200,28 @@ def inject_custom_css():
             color: #ffffff !important;
             border-color: #00ff87 !important;
             box-shadow: none !important;
+
+            /* --- FORM SUBMIT BUTTON FIX --- */
+        div.stFormSubmitButton > button:first-child {
+            background-color: #00ff87 !important; 
+            color: #28002B !important; 
+            border: 1px solid #00ff87 !important;
+            font-weight: 700 !important;
+        }
+        /* Hover State */
+        div.stFormSubmitButton > button:first-child:hover {
+            background-color: #00ff87 !important;
+            color: #28002B !important;
+            border-color: #28002B !important;
+        }
+        /* Focus/Active State */
+        div.stFormSubmitButton > button:first-child:active, 
+        div.stFormSubmitButton > button:first-child:focus {
+            background-color: #28002B !important;
+            color: #ffffff !important;
+            border-color: #00ff87 !important;
+            box-shadow: none !important;
+        }
         }
 
         /* Input Text Fields */
