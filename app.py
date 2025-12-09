@@ -179,25 +179,27 @@ def inject_custom_css():
             filter: invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
         }
         
-        /* --- BUTTON FIX FOR LIGHT MODE --- */
-        /* Force dark purple background and white text regardless of theme */
-        .stButton > button {
+        /* --- BUTTON FIX --- */
+        /* Explicitly target the button inside the stButton div to override Light Mode defaults */
+        div.stButton > button:first-child {
             background-color: #28002B !important; 
             color: #ffffff !important; 
             border: 1px solid #00ff87 !important;
-            transition: all 0.3s ease;
+            font-weight: 700 !important;
         }
-        /* Hover state: Neon green background, Dark text */
-        .stButton > button:hover {
+        /* Hover State */
+        div.stButton > button:first-child:hover {
             background-color: #00ff87 !important;
             color: #28002B !important;
             border-color: #28002B !important;
         }
-        /* Active/Focus state */
-        .stButton > button:active, .stButton > button:focus {
+        /* Focus/Active State (Clicking) */
+        div.stButton > button:first-child:active, 
+        div.stButton > button:first-child:focus {
             background-color: #28002B !important;
             color: #ffffff !important;
             border-color: #00ff87 !important;
+            box-shadow: none !important;
         }
 
         /* Input Text Fields */
@@ -319,10 +321,8 @@ def auto_process_eliminations(gw, matches):
 
 def admin_reset_game(current_gw, is_rollover=False):
     docs = db.collection('players').stream()
-    # Reset status to 'pending' so everyone has to repick to become 'active'
     for doc in docs:
         db.collection('players').document(doc.id).update({'status': 'pending', 'used_teams': [], 'eliminated_gw': None})
-    
     picks = db.collection('picks').where('matchday', '==', current_gw).stream()
     for pick in picks:
         db.collection('picks').document(pick.id).delete()
