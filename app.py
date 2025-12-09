@@ -179,30 +179,24 @@ def inject_custom_css():
             filter: invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
         }
         
-        /* --- BUTTON FIX (NUCLEAR OPTION) --- */
+/* --- BUTTON FIX --- */
+        /* Regular buttons */
         div.stButton > button {
             background-color: #28002B !important; 
             color: #ffffff !important; 
             border: 1px solid #00ff87 !important;
             font-weight: 700 !important;
         }
-        
-        /* Force Text Color Inside Button to White (Fixes Light Mode Issue) */
         div.stButton > button p {
             color: #ffffff !important;
         }
-
-        /* Hover State */
         div.stButton > button:hover {
             background-color: #00ff87 !important;
             border-color: #28002B !important;
         }
-        /* Hover State Text Color */
         div.stButton > button:hover p {
             color: #28002B !important;
         }
-
-        /* Focus/Active State */
         div.stButton > button:active, 
         div.stButton > button:focus {
             background-color: #28002B !important;
@@ -214,11 +208,34 @@ def inject_custom_css():
             color: #ffffff !important;
         }
 
-        /* Input Text Fields */
-        input[type="text"], input[type="password"] { 
-            color: #ffffff !important; font-weight: bold; 
-            background-color: rgba(255,255,255,0.1) !important; 
-            border: 1px solid #00ff87 !important; 
+        /* --- FORM SUBMIT BUTTON FIX --- */
+        div.stFormSubmitButton > button {
+            background-color: #00ff87 !important; 
+            color: #28002B !important; 
+            border: 1px solid #00ff87 !important;
+            font-weight: 700 !important;
+        }
+        div.stFormSubmitButton > button p {
+            color: #28002B !important;
+        }
+        div.stFormSubmitButton > button:hover {
+            background-color: #28002B !important;
+            color: #ffffff !important;
+            border-color: #00ff87 !important;
+        }
+        div.stFormSubmitButton > button:hover p {
+            color: #ffffff !important;
+        }
+        div.stFormSubmitButton > button:active, 
+        div.stFormSubmitButton > button:focus {
+            background-color: #00ff87 !important;
+            color: #28002B !important;
+            border-color: #00ff87 !important;
+            box-shadow: none !important;
+        }
+        div.stFormSubmitButton > button:active p, 
+        div.stFormSubmitButton > button:focus p {
+            color: #28002B !important;
         }
         
         @media (max-width: 600px) {
@@ -260,7 +277,7 @@ def get_current_gameweek_from_api():
         # Buffer logic: Last Kickoff + 135 mins
         last_kickoff_str = max([m['utcDate'] for m in matches_prev])
         last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
-        buffer_time = last_kickoff + timedelta(minutes=135)
+        buffer_time = last_kickoff + timedelta(minutes=130)
         
         if datetime.utcnow() < buffer_time:
             return prev_gw
@@ -588,7 +605,7 @@ def main():
         <div class="hero-container">
             <img src="https://cdn.freebiesupply.com/images/large/2x/premier-league-logo-black-and-white.png" class="hero-logo">
             <div class="hero-title">LAST MAN STANDING</div>
-            <div class="hero-subtitle">PREMIER LEAGUE 24/25</div>
+            <div class="hero-subtitle">SEASON 25/26</div>
         </div>
     """, unsafe_allow_html=True)
     
