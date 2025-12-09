@@ -135,7 +135,7 @@ def inject_custom_css():
         div[data-testid="stMetricLabel"] { color: #ffffff !important; } /* Force Label White */
         div[data-testid="stMetricValue"] { color: #ffffff !important; } /* Force Value White */
         
-        /* 6. EXPANDER & RADIO (SELECTION BOX) */
+        /* 6. EXPANDER HEADER */
         .streamlit-expanderHeader {
             background-color: #28002B !important;
             color: #ffffff !important; /* Force Title White */
@@ -143,16 +143,36 @@ def inject_custom_css():
             border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 8px !important;
         }
-        .streamlit-expanderHeader p { color: #ffffff !important; } /* Double force paragraph inside */
+        .streamlit-expanderHeader p { color: #ffffff !important; }
         
-        /* Radio Button List */
-        div[role="radiogroup"] p { color: #ffffff !important; } /* Force Names White */
-        div[role="radiogroup"] > label > div:first-of-type {
-            background-color: #28002B !important;
+        /* 7. RADIO BUTTONS (SELECTION BOX) - BIGGER & WHITER */
+        /* The text labels */
+        div[role="radiogroup"] p { 
+            color: #ffffff !important; 
+            font-size: 18px !important; /* Bigger font */
+            line-height: 1.5 !important; /* Spacing */
         }
-        
-        /* 7. CAPTIONS & NOTIFICATIONS */
-        div[data-testid="stCaptionContainer"] { color: #ffffff !important; } /* Force Captions White */
+        /* The outer circle of the radio button */
+        div[role="radiogroup"] > label > div:first-of-type {
+            width: 22px !important;  /* Make bigger */
+            height: 22px !important; /* Make bigger */
+            background-color: #28002B !important;
+            border-color: rgba(255,255,255,0.5) !important; /* Lighter border when unselected */
+        }
+        /* The inner circle (when selected) */
+        div[role="radiogroup"] > label > div:first-of-type > div {
+             background-color: #00ff87 !important; /* Neon fill */
+             width: 12px !important; /* Bigger inner circle */
+             height: 12px !important; /* Bigger inner circle */
+        }
+
+        /* 8. CAPTIONS & NOTIFICATIONS */
+        /* Target specific elements inside the caption container to ensure white color */
+        div[data-testid="stCaptionContainer"] { color: #ffffff !important; }
+        div[data-testid="stCaptionContainer"] p, div[data-testid="stCaptionContainer"] small {
+             color: #ffffff !important;
+             font-size: 14px !important; /* Slightly bigger caption font */
+        }
         
         /* ROLLOVER BANNER */
         .rollover-banner {
