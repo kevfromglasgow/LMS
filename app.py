@@ -36,6 +36,7 @@ def inject_custom_css():
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&display=swap');
         
+        /* 1. BACKGROUND */
         [data-testid="stAppViewContainer"] {
             background: linear-gradient(rgba(31, 0, 34, 0.85), rgba(31, 0, 34, 0.95)), 
                         url('https://images.unsplash.com/photo-1693517393451-a71a593c9870?q=80&w=1770&auto=format&fit=crop') !important;
@@ -45,6 +46,7 @@ def inject_custom_css():
             background-repeat: no-repeat !important;
         }
 
+        /* 2. HEADERS & TEXT */
         .hero-title {
             font-family: 'Teko', sans-serif; font-size: 60px; font-weight: 700;
             text-transform: uppercase; color: #ffffff; letter-spacing: 2px;
@@ -56,7 +58,10 @@ def inject_custom_css():
             color: #00ff87; text-transform: uppercase; letter-spacing: 3px;
             margin-top: 5px; font-weight: 600; text-align: center; margin-bottom: 20px;
         }
-        h1, h2, h3 { color: #ffffff !important; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
+        h1, h2, h3, h4, h5, h6 { color: #ffffff !important; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase; letter-spacing: 1px; }
+        
+        /* Force standard text to white if needed */
+        p, label { color: #ffffff !important; }
 
         .player-row-container {
             display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
@@ -80,7 +85,7 @@ def inject_custom_css():
             opacity: 0.8;
         }
         
-        /* --- FIX: NAME WRAPPING --- */
+        /* NAME WRAPPING */
         .pc-name { 
             font-size: 16px; font-weight: 700; color: #fff; 
             flex: 1; text-align: left;
@@ -98,7 +103,12 @@ def inject_custom_css():
         .status-tag-win { font-size: 10px; background: #00ff87; color: #1F0022; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px; }
         .status-tag-loss { font-size: 10px; background: #ff4b4b; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px; }
         
-        .pc-hidden { font-size: 24px; }
+        /* FIX: Force Padlock Icon to White */
+        .pc-hidden { 
+            font-size: 24px; 
+            color: #ffffff !important; 
+        }
+        
         .pc-team { font-size: 14px; color: #00ff87; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
         .pc-eliminated-text { font-size: 12px; color: #ff4b4b; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
 
@@ -120,34 +130,47 @@ def inject_custom_css():
         .time-text { font-size: 16px; font-weight: 700; color: white; line-height: 1; }
         .status-text { font-size: 9px; color: #ddd; text-transform: uppercase; margin-top: 5px; font-weight: 600; }
         
+        /* 5. METRIC CARDS (PRIZE POT / DEADLINE) */
         div[data-testid="stMetric"] { background-color: #28002B !important; border-radius: 10px; padding: 10px !important; }
-        div[data-testid="stMetricLabel"] { color: #00ff87 !important; }
-        div[data-testid="stMetricValue"] { color: #ffffff !important; }
+        div[data-testid="stMetricLabel"] { color: #ffffff !important; } /* Force Label White */
+        div[data-testid="stMetricValue"] { color: #ffffff !important; } /* Force Value White */
         
-        /* EXPANDER STYLING */
+        /* 6. EXPANDER & RADIO (SELECTION BOX) */
         .streamlit-expanderHeader {
             background-color: #28002B !important;
-            color: #ffffff !important;
+            color: #ffffff !important; /* Force Title White */
             font-weight: 800 !important;
             border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 8px !important;
         }
+        .streamlit-expanderHeader p { color: #ffffff !important; } /* Double force paragraph inside */
         
-        /* Radio Button Styling Override */
+        /* Radio Button List */
+        div[role="radiogroup"] p { color: #ffffff !important; } /* Force Names White */
         div[role="radiogroup"] > label > div:first-of-type {
             background-color: #28002B !important;
         }
         
-        /* BANNER STYLES */
+        /* 7. CAPTIONS & NOTIFICATIONS */
+        div[data-testid="stCaptionContainer"] { color: #ffffff !important; } /* Force Captions White */
+        
+        /* ROLLOVER BANNER */
+        .rollover-banner {
+            background-color: #ff4b4b; color: white; text-align: center;
+            padding: 15px; border-radius: 10px; margin-bottom: 20px;
+            font-family: 'Teko', sans-serif; font-size: 30px; font-weight: 700;
+            letter-spacing: 2px; box-shadow: 0 0 20px rgba(255, 75, 75, 0.6);
+            animation: pulse 2s infinite;
+        }
         .banner-container {
             text-align: center; padding: 20px; border-radius: 10px; margin-bottom: 20px;
             box-shadow: 0 0 20px rgba(0,0,0,0.5); animation: pulse 2s infinite;
         }
         .banner-rollover { background-color: #ff4b4b; color: white; box-shadow: 0 0 20px rgba(255, 75, 75, 0.6); }
         .banner-winner { background-color: #FFD700; color: #28002B; box-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
-        
         .banner-title { font-family: 'Teko', sans-serif; font-size: 36px; font-weight: 700; margin: 0; line-height: 1; }
         .banner-subtitle { font-family: 'Helvetica Neue', sans-serif; font-size: 16px; font-weight: 600; margin-top: 5px; }
+        @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.02);} 100% {transform:scale(1);} }
         
         /* HERO LOGO */
         .hero-container { text-align: center; margin-bottom: 30px; }
@@ -155,8 +178,6 @@ def inject_custom_css():
             width: 200px; height: auto; margin-bottom: 15px;
             filter: invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
         }
-        
-        @keyframes pulse { 0% {transform:scale(1);} 50% {transform:scale(1.02);} 100% {transform:scale(1);} }
         
         .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
         input[type="text"], input[type="password"] { 
@@ -380,7 +401,7 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         
     active_players = []
     eliminated_players = []
-    waiting_count = 0 # Counter for players who haven't picked yet
+    waiting_count = 0 
     
     for p in players_data:
         name = p['name']
@@ -394,7 +415,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
             p['pending_elimination'] = True 
             eliminated_players.append(p)
         elif status in ['active', 'pending']: 
-            # Only add to list if they have picked. Otherwise just count them.
             if team:
                 active_players.append(p)
             else:
@@ -420,7 +440,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
                 mid = '<span class="pc-hidden">🔒</span>'
                 btm = '<div class="pc-team">HIDDEN</div>'
         else:
-            # This block is now unreachable due to the filter above, but keeping structure safe
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
 
@@ -429,7 +448,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     if active_html:
         st.markdown(f'<div class="player-row-container">{active_html}</div>', unsafe_allow_html=True)
     
-    # Show "Waiting" count if applicable
     if waiting_count > 0:
         st.caption(f"⏳ Waiting for picks from {waiting_count} other players...")
 
@@ -598,6 +616,7 @@ def main():
     st.markdown("---")
     st.subheader("🎯 Make Your Selection")
 
+    # Filter: Active players who have NOT picked yet
     user_picks_this_week = {p['user'] for p in all_picks}
     active_available_names = sorted([
         p['name'] for p in all_players_full 
@@ -606,6 +625,7 @@ def main():
     
     options = ["Select your name...", "➕ I am a New Player"] + active_available_names
     
+    # MOBILE FIX: Auto-Close Expander
     if "selected_radio_option" not in st.session_state:
         st.session_state.selected_radio_option = "Select your name..."
     if "expander_version" not in st.session_state:
@@ -671,13 +691,15 @@ def main():
     st.markdown("---")
     
     # --- BANNER LOGIC ---
-    active_count = len([p for p in all_players_full if p.get('status') == 'active'])
+    survivors = [p for p in all_players_full if p.get('status') in ['active', 'pending']]
+    active_survivors = [p for p in all_players_full if p.get('status') == 'active']
+    pending_survivors = [p for p in all_players_full if p.get('status') == 'pending']
     
     sim_w = st.session_state.get('sim_winner', False)
     sim_r = st.session_state.get('sim_rollover', False)
     
     # 1. ROLLOVER (Everyone dead OR Sim Rollover)
-    if (active_count == 0 and len(all_players_full) > 0) or sim_r:
+    if (len(survivors) == 0 and len(all_players_full) > 0) or sim_r:
         st.markdown("""
         <div class="banner-container banner-rollover">
             <div class="banner-title">💀 GAME OVER 💀</div>
@@ -685,22 +707,21 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-    # 2. WINNER (1 Active AND (Sim Winner OR Active Player Actually Won))
-    elif active_count == 1 or sim_w:
+    # 2. WINNER (1 Active AND 0 Pending AND (Sim Winner OR Active Player Actually Won))
+    elif (len(active_survivors) == 1 and len(pending_survivors) == 0) or sim_w:
         survivor_name = "TEST WINNER"
         show_winner = False
         
         if sim_w:
             show_winner = True
         else:
-            survivor = next((p for p in all_players_full if p['status'] == 'active'), None)
-            if survivor:
-                survivor_name = survivor['name']
-                pick_data = next((p for p in all_picks if p['user'] == survivor_name), None)
-                if pick_data:
-                    team_res = calculate_team_results(matches)
-                    if team_res.get(pick_data['team']) == 'WIN':
-                        show_winner = True
+            survivor = active_survivors[0]
+            survivor_name = survivor['name']
+            pick_data = next((p for p in all_picks if p['user'] == survivor_name), None)
+            if pick_data:
+                team_res = calculate_team_results(matches)
+                if team_res.get(pick_data['team']) == 'WIN':
+                    show_winner = True
 
         if show_winner:
             st.markdown(f"""
