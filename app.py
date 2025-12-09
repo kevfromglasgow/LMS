@@ -428,7 +428,7 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
                 btm = f'<div class="pc-team">{team}</div>'
             else:
                 mid = '<span class="pc-hidden">🔒</span>'
-                btm = '<div class="pc-team">HIDDEN</div>'
+                btm = '<div class="pc-team" style="color:#aaa">HIDDEN</div>'
         else:
             mid = '<span class="pc-hidden">⏳</span>'
             btm = '<div class="pc-team" style="color:#aaa">NO PICK</div>'
