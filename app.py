@@ -182,8 +182,8 @@ def inject_custom_css():
         /* --- BUTTON FIX --- */
         /* Explicitly target the button inside the stButton div to override Light Mode defaults */
         div.stButton > button:first-child {
-            background-color: #28002B !important; 
-            color: #ffffff !important; 
+            background-color: #00ff87 !important; 
+            color: #28002B !important; 
             border: 1px solid #00ff87 !important;
             font-weight: 700 !important;
         }
