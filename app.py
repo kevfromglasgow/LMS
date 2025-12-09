@@ -135,7 +135,7 @@ def inject_custom_css():
         div[data-testid="stMetricLabel"] { color: #ffffff !important; } /* Force Label White */
         div[data-testid="stMetricValue"] { color: #ffffff !important; } /* Force Value White */
         
-        /* 6. EXPANDER HEADER */
+        /* 6. EXPANDER & RADIO (SELECTION BOX) */
         .streamlit-expanderHeader {
             background-color: #28002B !important;
             color: #ffffff !important; /* Force Title White */
@@ -143,36 +143,16 @@ def inject_custom_css():
             border: 1px solid rgba(255,255,255,0.1) !important;
             border-radius: 8px !important;
         }
-        .streamlit-expanderHeader p { color: #ffffff !important; }
+        .streamlit-expanderHeader p { color: #ffffff !important; } /* Double force paragraph inside */
         
-        /* 7. RADIO BUTTONS (SELECTION BOX) - BIGGER & WHITER */
-        /* The text labels */
-        div[role="radiogroup"] p { 
-            color: #ffffff !important; 
-            font-size: 18px !important; /* Bigger font */
-            line-height: 1.5 !important; /* Spacing */
-        }
-        /* The outer circle of the radio button */
+        /* Radio Button List */
+        div[role="radiogroup"] p { color: #ffffff !important; } /* Force Names White */
         div[role="radiogroup"] > label > div:first-of-type {
-            width: 22px !important;  /* Make bigger */
-            height: 22px !important; /* Make bigger */
             background-color: #28002B !important;
-            border-color: rgba(255,255,255,0.5) !important; /* Lighter border when unselected */
         }
-        /* The inner circle (when selected) */
-        div[role="radiogroup"] > label > div:first-of-type > div {
-             background-color: #00ff87 !important; /* Neon fill */
-             width: 12px !important; /* Bigger inner circle */
-             height: 12px !important; /* Bigger inner circle */
-        }
-
-        /* 8. CAPTIONS & NOTIFICATIONS */
-        /* Target specific elements inside the caption container to ensure white color */
-        div[data-testid="stCaptionContainer"] { color: #ffffff !important; }
-        div[data-testid="stCaptionContainer"] p, div[data-testid="stCaptionContainer"] small {
-             color: #ffffff !important;
-             font-size: 14px !important; /* Slightly bigger caption font */
-        }
+        
+        /* 7. CAPTIONS & NOTIFICATIONS */
+        div[data-testid="stCaptionContainer"] { color: #ffffff !important; } /* Force Captions White */
         
         /* ROLLOVER BANNER */
         .rollover-banner {
@@ -199,7 +179,28 @@ def inject_custom_css():
             filter: invert(1) drop-shadow(0 0 10px rgba(255,255,255,0.2));
         }
         
-        .stButton button { background-color: #28002B !important; color: white !important; border: 1px solid #00ff87 !important; }
+        /* --- BUTTON FIX FOR LIGHT MODE --- */
+        /* Force dark purple background and white text regardless of theme */
+        .stButton > button {
+            background-color: #28002B !important; 
+            color: #ffffff !important; 
+            border: 1px solid #00ff87 !important;
+            transition: all 0.3s ease;
+        }
+        /* Hover state: Neon green background, Dark text */
+        .stButton > button:hover {
+            background-color: #00ff87 !important;
+            color: #28002B !important;
+            border-color: #28002B !important;
+        }
+        /* Active/Focus state */
+        .stButton > button:active, .stButton > button:focus {
+            background-color: #28002B !important;
+            color: #ffffff !important;
+            border-color: #00ff87 !important;
+        }
+
+        /* Input Text Fields */
         input[type="text"], input[type="password"] { 
             color: #ffffff !important; font-weight: bold; 
             background-color: rgba(255,255,255,0.1) !important; 
@@ -318,8 +319,10 @@ def auto_process_eliminations(gw, matches):
 
 def admin_reset_game(current_gw, is_rollover=False):
     docs = db.collection('players').stream()
+    # Reset status to 'pending' so everyone has to repick to become 'active'
     for doc in docs:
         db.collection('players').document(doc.id).update({'status': 'pending', 'used_teams': [], 'eliminated_gw': None})
+    
     picks = db.collection('picks').where('matchday', '==', current_gw).stream()
     for pick in picks:
         db.collection('picks').document(pick.id).delete()
