@@ -64,19 +64,15 @@ def inject_custom_css():
         
         p, label { color: #ffffff !important; }
 
-        /* --- UPDATED: GRID LAYOUT FOR PLAYERS --- */
-        /* This puts cards side-by-side on desktop, stacked on mobile */
+        /* --- VERTICAL STACK LAYOUT (Original Style) --- */
         .player-row-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 10px;
-            margin-bottom: 30px;
+            display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
         
         /* ACTIVE CARD STYLE */
         .player-card {
             background-color: #28002B; border: 1px solid rgba(0, 255, 135, 0.3); border-radius: 12px;
-            padding: 12px 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s;
+            padding: 12px 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.2s;
             display: flex; align-items: center; justify-content: space-between; width: 100%;
         }
         .player-card:hover { transform: translateY(-2px); border-color: #00ff87; }
@@ -86,7 +82,7 @@ def inject_custom_css():
             background-color: #1a1a1a; 
             border: 1px solid #444; 
             border-radius: 12px;
-            padding: 10px 15px; 
+            padding: 10px 20px; 
             display: flex; align-items: center; justify-content: space-between; width: 100%;
             opacity: 0.8;
         }
@@ -95,24 +91,27 @@ def inject_custom_css():
         .pc-name { 
             font-size: 16px; font-weight: 700; color: #fff; 
             flex: 1; text-align: left;
-            white-space: nowrap;       
-            overflow: hidden; 
-            text-overflow: ellipsis;     
+            white-space: normal !important;       
+            overflow-wrap: break-word !important; 
+            word-wrap: break-word !important;     
             min-width: 0 !important;              
             line-height: 1.2; 
             padding-right: 10px; 
         }
         
-        .pc-center { flex: 0 0 80px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .pc-badge { width: 30px; height: 30px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+        .pc-center { flex: 0 0 100px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .pc-badge { width: 35px; height: 35px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
         
-        .status-tag-win { font-size: 10px; background: #00ff87; color: #1F0022; padding: 1px 4px; border-radius: 4px; font-weight: 800; margin-top: 2px; letter-spacing: 1px; }
-        .status-tag-loss { font-size: 10px; background: #ff4b4b; color: white; padding: 1px 4px; border-radius: 4px; font-weight: 800; margin-top: 2px; letter-spacing: 1px; }
+        .status-tag-win { font-size: 10px; background: #00ff87; color: #1F0022; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px; }
+        .status-tag-loss { font-size: 10px; background: #ff4b4b; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 800; margin-top: 4px; letter-spacing: 1px; }
         
-        .pc-hidden { font-size: 20px; color: #ffffff !important; }
+        .pc-hidden { 
+            font-size: 24px; 
+            color: #ffffff !important; 
+        }
         
-        .pc-team { font-size: 13px; color: #00ff87; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .pc-eliminated-text { font-size: 11px; color: #ff4b4b; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
+        .pc-team { font-size: 14px; color: #00ff87; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
+        .pc-eliminated-text { font-size: 12px; color: #ff4b4b; font-weight: 600; flex: 1; text-align: right; text-transform: uppercase; }
 
         .match-card {
             background-color: #28002B; border-radius: 12px; padding: 12px 10px;
@@ -341,7 +340,7 @@ def admin_reset_game(current_gw, is_rollover=False):
     return "ROLLOVER!" if is_rollover else "RESET!"
 
 def display_player_status(picks, matches, players_data, reveal_mode=False):
-    # UPDATED: Wrapped in Expander + Grid Layout
+    # UPDATED: Wrapped in Expander + Standard List Layout
     team_results = calculate_team_results(matches)
     user_pick_map = {p['user']: p['team'] for p in picks}
     crest_map = {}
