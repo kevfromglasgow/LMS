@@ -231,67 +231,62 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
-# --- SMART GAMEWEEK CALCULATION ---
+# --- SMART GAMEWEEK CALCULATION (FIXED LOGIC) ---
 @st.cache_data(ttl=300) 
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
-        # 1. Ask API for the "Scheduled" matches to find the 'next' gameweek
+        # 1. Ask API for the "Scheduled" matches
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
         
         if not data.get('matches'): return 38
         
-        # API says this is the current active week
+        # API says this is the upcoming GW (e.g. 17)
         api_gw = data['matches'][0]['matchday']
         
-        # 2. CHECK: Is THIS gameweek actually "dead" for us?
+        # 2. Check PREVIOUS GW (e.g. 16)
+        # We need to ensure GW16 is actually done before showing GW17.
         
-        # A. Get matches for this specific GW (e.g. 16)
-        matches_current = get_matches_for_gameweek(api_gw)
+        prev_gw = api_gw - 1
+        if prev_gw < 1: return api_gw
         
-        # B. Get picks for this GW
-        picks_docs = db.collection('picks').where('matchday', '==', api_gw).stream()
-        picked_teams = {doc.to_dict().get('team') for doc in picks_docs}
+        # Check picks for PREVIOUS GW (16)
+        picks_docs_prev = db.collection('picks').where('matchday', '==', prev_gw).stream()
+        picked_teams_prev = {doc.to_dict().get('team') for doc in picks_docs_prev}
         
-        # C. Find matches in this GW that are NOT finished yet
-        upcoming_matches = []
-        for m in matches_current:
+        matches_prev = get_matches_for_gameweek(prev_gw)
+        
+        # Are there any relevant matches left in GW16?
+        relevant_matches_prev = []
+        for m in matches_prev:
             if m['status'] != 'FINISHED':
-                upcoming_matches.append(m)
+                home = m['homeTeam']['name']
+                away = m['awayTeam']['name']
+                if home in picked_teams_prev or away in picked_teams_prev:
+                    relevant_matches_prev.append(m)
+        
+        # If there ARE relevant matches still playing in GW16, STAY ON GW16.
+        if relevant_matches_prev:
+            return prev_gw
+            
+        # If no relevant matches left in GW16, check the buffer of the last relevant game.
+        if picked_teams_prev:
+            # Filter matches to only those that were picked
+            relevant_finished = [m for m in matches_prev if m['homeTeam']['name'] in picked_teams_prev or m['awayTeam']['name'] in picked_teams_prev]
+            
+            if relevant_finished:
+                last_kickoff_str = max([m['utcDate'] for m in relevant_finished])
+                last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
+                game_over_time = last_kickoff + timedelta(minutes=135)
                 
-        # D. Filter: Do any of these upcoming matches involve a picked team?
-        relevant_upcoming = []
-        for m in upcoming_matches:
-            home = m['homeTeam']['name']
-            away = m['awayTeam']['name']
-            if home in picked_teams or away in picked_teams:
-                relevant_upcoming.append(m)
-                
-        # 3. DECISION TIME
-        if not relevant_upcoming:
-            # No relevant matches left. 
-            
-            # Check buffer: Did the last RELEVANT game finish > 2 hours ago?
-            all_relevant = [m for m in matches_current if m['homeTeam']['name'] in picked_teams or m['awayTeam']['name'] in picked_teams]
-            
-            if not all_relevant:
-                # Nobody picked ANY team in this GW? 
-                # If there are no relevant matches at all, we force move to next week.
-                return api_gw + 1
-            
-            last_kickoff_str = max([m['utcDate'] for m in all_relevant])
-            last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
-            game_over_time = last_kickoff + timedelta(minutes=135)
-            
-            if datetime.utcnow() > game_over_time:
-                # The last meaningful game is over. Force jump to next week.
-                return api_gw + 1
-            else:
-                # The last meaningful game is still playing/recent. Stay on current.
-                return api_gw
-                
-        # If there ARE relevant upcoming matches, trust the API.
+                # If the last relevant game finished less than 2 hours ago, stay on GW16
+                if datetime.utcnow() < game_over_time:
+                    return prev_gw
+
+        # If we passed all checks, GW16 is officially done.
+        # Now we look at GW17. 
+        # We just return api_gw (17). We DON'T skip it just because it has no picks yet.
         return api_gw
         
     except Exception as e:
@@ -337,9 +332,19 @@ def get_game_settings():
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
-# --- AUTO ELIMINATION LOGIC ---
-def auto_process_eliminations(gw, matches):
-    team_results = calculate_team_results(matches)
+# --- AUTO ELIMINATION LOGIC (DUAL CHECK) ---
+def auto_process_eliminations(current_gw, matches):
+    # 1. Process CURRENT Gameweek
+    _process_single_gw(current_gw, matches)
+    
+    # 2. Process PREVIOUS Gameweek (Safe check for late results)
+    prev_gw = current_gw - 1
+    if prev_gw > 0:
+        matches_prev = get_matches_for_gameweek(prev_gw)
+        _process_single_gw(prev_gw, matches_prev)
+
+def _process_single_gw(gw, matches_data):
+    team_results = calculate_team_results(matches_data)
     picks = get_all_picks_for_gw(gw)
     updates_made = False
     
@@ -552,7 +557,8 @@ def main():
             st.subheader("⚡ Super Admin Tools")
             
             real_gw = get_current_gameweek_from_api() 
-            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=15)
+            # FIXED: Slider default value is now real_gw to prevent accidental sweeps
+            gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=real_gw)
             
             st.divider()
             
@@ -577,9 +583,7 @@ def main():
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚡ Inject Spreadsheet Data"):
-                # Call bulk_import_history
-                # count = bulk_import_history() 
-                # st.success(f"Imported {count} players!")
+                # Placeholder for bulk_import_history
                 st.cache_data.clear()
                 st.rerun()
                 
