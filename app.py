@@ -231,28 +231,72 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
-@st.cache_data(ttl=3600)
+# --- SMART GAMEWEEK CALCULATION ---
+@st.cache_data(ttl=300) 
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
+        # 1. Ask API for the "Scheduled" matches to find the 'next' gameweek
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
+        
         if not data.get('matches'): return 38
-        suggested_gw = data['matches'][0]['matchday']
         
-        prev_gw = suggested_gw - 1
-        if prev_gw < 1: return suggested_gw
-        matches_prev = get_matches_for_gameweek(prev_gw)
-        if not matches_prev: return suggested_gw
+        # API says this is the current active week
+        api_gw = data['matches'][0]['matchday']
         
-        last_kickoff_str = max([m['utcDate'] for m in matches_prev])
-        last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
-        buffer_time = last_kickoff + timedelta(minutes=130)
+        # 2. CHECK: Is THIS gameweek actually "dead" for us?
         
-        if datetime.utcnow() < buffer_time:
-            return prev_gw
-        return suggested_gw
-    except: return 15
+        # A. Get matches for this specific GW (e.g. 16)
+        matches_current = get_matches_for_gameweek(api_gw)
+        
+        # B. Get picks for this GW
+        picks_docs = db.collection('picks').where('matchday', '==', api_gw).stream()
+        picked_teams = {doc.to_dict().get('team') for doc in picks_docs}
+        
+        # C. Find matches in this GW that are NOT finished yet
+        upcoming_matches = []
+        for m in matches_current:
+            if m['status'] != 'FINISHED':
+                upcoming_matches.append(m)
+                
+        # D. Filter: Do any of these upcoming matches involve a picked team?
+        relevant_upcoming = []
+        for m in upcoming_matches:
+            home = m['homeTeam']['name']
+            away = m['awayTeam']['name']
+            if home in picked_teams or away in picked_teams:
+                relevant_upcoming.append(m)
+                
+        # 3. DECISION TIME
+        if not relevant_upcoming:
+            # No relevant matches left. 
+            
+            # Check buffer: Did the last RELEVANT game finish > 2 hours ago?
+            all_relevant = [m for m in matches_current if m['homeTeam']['name'] in picked_teams or m['awayTeam']['name'] in picked_teams]
+            
+            if not all_relevant:
+                # Nobody picked ANY team in this GW? 
+                # If there are no relevant matches at all, we force move to next week.
+                return api_gw + 1
+            
+            last_kickoff_str = max([m['utcDate'] for m in all_relevant])
+            last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
+            game_over_time = last_kickoff + timedelta(minutes=135)
+            
+            if datetime.utcnow() > game_over_time:
+                # The last meaningful game is over. Force jump to next week.
+                return api_gw + 1
+            else:
+                # The last meaningful game is still playing/recent. Stay on current.
+                return api_gw
+                
+        # If there ARE relevant upcoming matches, trust the API.
+        return api_gw
+        
+    except Exception as e:
+        print(f"Error in GW logic: {e}")
+        return 15 # Default fallback
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
@@ -533,7 +577,9 @@ def main():
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚡ Inject Spreadsheet Data"):
-                # Placeholder for bulk_import_history
+                # Call bulk_import_history
+                # count = bulk_import_history() 
+                # st.success(f"Imported {count} players!")
                 st.cache_data.clear()
                 st.rerun()
                 
@@ -725,7 +771,8 @@ def main():
                             team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
                             if st.form_submit_button("SUBMIT PICK"):
                                 pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
-                                user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active', 'paid': False}, merge=True)
+                                # FIXED: Removed 'paid': False to prevent overwriting payment status
+                                user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
                                 st.success(f"✅ Pick Locked In for {actual_user_name}!")
                                 st.cache_data.clear() 
                                 st.rerun()
