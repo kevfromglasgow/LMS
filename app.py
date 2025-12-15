@@ -231,28 +231,75 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
-@st.cache_data(ttl=3600)
+# --- SMART GAMEWEEK CALCULATION ---
+@st.cache_data(ttl=300) # Check every 5 mins
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
+        # 1. Ask API for the "Scheduled" matches to find the 'next' gameweek
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
+        
+        # If season over
         if not data.get('matches'): return 38
-        suggested_gw = data['matches'][0]['matchday']
         
-        prev_gw = suggested_gw - 1
-        if prev_gw < 1: return suggested_gw
+        # API says this is the upcoming GW (e.g., 17)
+        api_suggested_gw = data['matches'][0]['matchday']
+        
+        # 2. Look at the previous GW (e.g., 16) to see if it is technically "finished" for OUR players
+        prev_gw = api_suggested_gw - 1
+        if prev_gw < 1: return api_suggested_gw
+        
         matches_prev = get_matches_for_gameweek(prev_gw)
-        if not matches_prev: return suggested_gw
+        if not matches_prev: return api_suggested_gw
         
-        last_kickoff_str = max([m['utcDate'] for m in matches_prev])
+        # --- SMART LOGIC: Ignore matches nobody picked ---
+        
+        # A. Who did people pick in GW 16?
+        picks_docs = db.collection('picks').where('matchday', '==', prev_gw).stream()
+        picked_teams = {doc.to_dict().get('team') for doc in picks_docs}
+        
+        # B. Filter the matches. 
+        # We only care about waiting for a match if a human picked one of the teams playing.
+        relevant_matches = []
+        
+        if not picked_teams:
+            # EDGE CASE: If NOBODY picked any team this week (e.g. fresh start), 
+            # we must wait for ALL matches to finish before rolling over.
+            relevant_matches = matches_prev
+        else:
+            for m in matches_prev:
+                home = m['homeTeam']['name']
+                away = m['awayTeam']['name']
+                # If someone picked Home OR Away, this match matters.
+                if home in picked_teams or away in picked_teams:
+                    relevant_matches.append(m)
+        
+        # C. If NO relevant matches are left (e.g. Man Utd vs Bournemouth is tonight, but nobody picked them),
+        # then 'relevant_matches' will only contain the Sat/Sun games which are already finished.
+        
+        # D. Find the latest "Game Over" time among relevant matches only.
+        if not relevant_matches:
+            # This implies all picked games are done. Move on immediately.
+            return api_suggested_gw
+            
+        last_kickoff_str = max([m['utcDate'] for m in relevant_matches])
         last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
-        buffer_time = last_kickoff + timedelta(minutes=130)
         
-        if datetime.utcnow() < buffer_time:
-            return prev_gw
-        return suggested_gw
-    except: return 15
+        # Buffer: Kickoff + 135 minutes (90 playing + 15 HT + 30 buffer)
+        game_over_time = last_kickoff + timedelta(minutes=135)
+        
+        # 3. Decision Time
+        # If we are past the "Game Over" time of the last RELEVANT match, move to GW 17.
+        # Otherwise, stay on GW 16.
+        if datetime.utcnow() < game_over_time:
+            return prev_gw 
+            
+        return api_suggested_gw
+        
+    except Exception as e:
+        print(f"Error in GW logic: {e}")
+        return 15 # Default fallback
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
