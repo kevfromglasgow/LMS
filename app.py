@@ -232,70 +232,67 @@ def get_all_picks_for_gw(gw):
     except: return []
 
 # --- SMART GAMEWEEK CALCULATION ---
-@st.cache_data(ttl=300) # Check every 5 mins
+@st.cache_data(ttl=300) 
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
-        # 1. Ask API for the "Scheduled" matches to find the 'next' gameweek
+        # 1. Ask API for the "Scheduled" matches
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
         
-        # If season over
         if not data.get('matches'): return 38
         
-        # API says this is the upcoming GW (e.g., 17)
-        api_suggested_gw = data['matches'][0]['matchday']
+        # API says this is the current active week
+        api_gw = data['matches'][0]['matchday']
         
-        # 2. Look at the previous GW (e.g., 16) to see if it is technically "finished" for OUR players
-        prev_gw = api_suggested_gw - 1
-        if prev_gw < 1: return api_suggested_gw
+        # 2. CHECK: Is THIS gameweek actually "dead" for us?
         
-        matches_prev = get_matches_for_gameweek(prev_gw)
-        if not matches_prev: return api_suggested_gw
+        # A. Get matches for this specific GW (e.g. 16)
+        matches_current = get_matches_for_gameweek(api_gw)
         
-        # --- SMART LOGIC: Ignore matches nobody picked ---
-        
-        # A. Who did people pick in GW 16?
-        picks_docs = db.collection('picks').where('matchday', '==', prev_gw).stream()
+        # B. Get picks for this GW
+        picks_docs = db.collection('picks').where('matchday', '==', api_gw).stream()
         picked_teams = {doc.to_dict().get('team') for doc in picks_docs}
         
-        # B. Filter the matches. 
-        # We only care about waiting for a match if a human picked one of the teams playing.
-        relevant_matches = []
-        
-        if not picked_teams:
-            # EDGE CASE: If NOBODY picked any team this week (e.g. fresh start), 
-            # we must wait for ALL matches to finish before rolling over.
-            relevant_matches = matches_prev
-        else:
-            for m in matches_prev:
-                home = m['homeTeam']['name']
-                away = m['awayTeam']['name']
-                # If someone picked Home OR Away, this match matters.
-                if home in picked_teams or away in picked_teams:
-                    relevant_matches.append(m)
-        
-        # C. If NO relevant matches are left (e.g. Man Utd vs Bournemouth is tonight, but nobody picked them),
-        # then 'relevant_matches' will only contain the Sat/Sun games which are already finished.
-        
-        # D. Find the latest "Game Over" time among relevant matches only.
-        if not relevant_matches:
-            # This implies all picked games are done. Move on immediately.
-            return api_suggested_gw
+        # C. Find matches in this GW that are NOT finished yet
+        upcoming_matches = []
+        for m in matches_current:
+            if m['status'] != 'FINISHED':
+                upcoming_matches.append(m)
+                
+        # D. Filter: Do any of these upcoming matches involve a picked team?
+        relevant_upcoming = []
+        for m in upcoming_matches:
+            home = m['homeTeam']['name']
+            away = m['awayTeam']['name']
+            if home in picked_teams or away in picked_teams:
+                relevant_upcoming.append(m)
+                
+        # 3. DECISION TIME
+        if not relevant_upcoming:
+            # No relevant matches left. 
             
-        last_kickoff_str = max([m['utcDate'] for m in relevant_matches])
-        last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
-        
-        # Buffer: Kickoff + 135 minutes (90 playing + 15 HT + 30 buffer)
-        game_over_time = last_kickoff + timedelta(minutes=135)
-        
-        # 3. Decision Time
-        # If we are past the "Game Over" time of the last RELEVANT match, move to GW 17.
-        # Otherwise, stay on GW 16.
-        if datetime.utcnow() < game_over_time:
-            return prev_gw 
+            # Check buffer: Did the last RELEVANT game finish > 2 hours ago?
+            all_relevant = [m for m in matches_current if m['homeTeam']['name'] in picked_teams or m['awayTeam']['name'] in picked_teams]
             
-        return api_suggested_gw
+            if not all_relevant:
+                # Nobody picked ANY team in this GW? 
+                # If there are no relevant matches at all, we force move to next week.
+                return api_gw + 1
+            
+            last_kickoff_str = max([m['utcDate'] for m in all_relevant])
+            last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
+            game_over_time = last_kickoff + timedelta(minutes=135)
+            
+            if datetime.utcnow() > game_over_time:
+                # The last meaningful game is over. Force jump to next week.
+                return api_gw + 1
+            else:
+                # The last meaningful game is still playing/recent. Stay on current.
+                return api_gw
+                
+        # If there ARE relevant upcoming matches, trust the API.
+        return api_gw
         
     except Exception as e:
         print(f"Error in GW logic: {e}")
@@ -385,6 +382,86 @@ def admin_reset_game(current_gw, is_rollover=False):
     new_mult = current_mult + 1 if is_rollover else 1
     update_game_settings(new_mult)
     return "ROLLOVER!" if is_rollover else "RESET!"
+
+def bulk_import_history():
+    def fix_team(t):
+        mapping = {
+            "Bournemouth": "AFC Bournemouth", "Arsenal": "Arsenal FC", "Chelsea": "Chelsea FC",
+            "Brighton": "Brighton & Hove Albion FC", "Aston Villa": "Aston Villa FC",
+            "Manchester City": "Manchester City FC", "Manchester United": "Manchester United FC",
+            "Newcastle": "Newcastle United FC", "Crystal Palace": "Crystal Palace FC",
+            "Fulham": "Fulham FC", "Nottingham Forest": "Nottingham Forest FC",
+            "Liverpool": "Liverpool FC", "West Ham": "West Ham United FC",
+            "Sunderland": "Sunderland AFC", "Brentford": "Brentford FC",
+            "Wolverhampton Wanderers": "Wolverhampton Wanderers FC"
+        }
+        return mapping.get(t, t + " FC" if "FC" not in t else t)
+
+    RAW_DATA = {
+        "Aidan Mannion": ["Bournemouth", "Arsenal", "Chelsea", "Brighton", "Aston Villa", "Manchester City", "Manchester United"],
+        "Alan Comiskey": ["Chelsea"],
+        "Barry Mackintosh": ["Chelsea"],
+        "Clevon Beadle": ["Manchester City"],
+        "Colin Jackson": ["Manchester United", "Sunderland"],
+        "Colin Taylor": ["Chelsea"],
+        "Connor Smith": ["Bournemouth", "Arsenal", "Chelsea", "Liverpool"],
+        "Conor Brady": ["Bournemouth", "Arsenal", "Crystal Palace"],
+        "Danny Mulgrew": ["Chelsea"],
+        "Drew Boult": ["Arsenal", "Manchester United"],
+        "Fraser Robson": ["Bournemouth", "Manchester United"],
+        "Gary McIntyre": ["Manchester City"],
+        "John McAllister": ["Chelsea"],
+        "Jonathan McCormack": ["Manchester City"],
+        "Katie Arnold": ["Newcastle", "Arsenal", "Chelsea", "Aston Villa", "Manchester City", "Crystal Palace", "Brighton"],
+        "Kevin Dorward": ["Chelsea"],
+        "Kyle Goldie": ["Manchester City"],
+        "Kirsti Chalmers": ["Chelsea"],
+        "Lee Brady": ["Newcastle", "Fulham", "Nottingham Forest", "Bournemouth"],
+        "Liam Samuels": ["Newcastle", "Manchester United"],
+        "Lyndon Rambottom": ["Arsenal", "Brighton", "Chelsea", "Liverpool"],
+        "Mark Roberts": ["Chelsea"],
+        "Martin Brady": ["Chelsea"],
+        "Max Dougall": ["Bournemouth", "Arsenal", "Chelsea", "Crystal Palace", "Aston Villa", "Manchester United", "Liverpool"],
+        "Michael Cumming": ["Chelsea"],
+        "Michael Gallagher": ["Newcastle", "Arsenal", "West Ham", "Liverpool"],
+        "Michael Mullen": ["Manchester City"],
+        "Nathanael Samuels": ["Chelsea"],
+        "Phil McLean": ["Chelsea"],
+        "Richard Cartner": ["Newcastle", "Sunderland"],
+        "Scott Hendry": ["Manchester City"],
+        "Sean Flatley": ["Manchester City"],
+        "Stan Payne": ["Wolverhampton Wanderers"],
+        "Theo Samuels": ["Newcastle", "Manchester City", "West Ham", "Chelsea", "Brentford", "Arsenal"],
+        "Thomas Kolakovic": ["Chelsea"],
+        "Thomas McArthur": ["Manchester City"],
+        "Tom Wright": ["Chelsea"],
+        "Zach Smith-Palmieri": ["Chelsea"]
+    }
+
+    count_players = 0
+    for name, picks in RAW_DATA.items():
+        is_active = (len(picks) == 7)
+        status = 'active' if is_active else 'eliminated'
+        eliminated_gw = (len(picks) + 8) if not is_active else None 
+        used_teams = []
+        for i, raw_team in enumerate(picks):
+            gw = i + 9
+            team_name = fix_team(raw_team)
+            used_teams.append(team_name)
+            result = 'WIN'
+            if not is_active and i == len(picks) - 1: result = 'LOSS'
+            
+            db.collection('picks').document(f"{name}_GW{gw}").set({
+                'user': name, 'team': team_name, 'matchday': gw, 
+                'timestamp': datetime.now(), 'result': result
+            })
+
+        db.collection('players').document(name).set({
+            'name': name, 'status': status, 'used_teams': used_teams, 
+            'eliminated_gw': eliminated_gw, 'email': '', 'password': ''
+        })
+        count_players += 1
+    return count_players
 
 def display_player_status(picks, matches, players_data, reveal_mode=False):
     # UPDATED: Wrapped in Expander + Standard List Layout
@@ -580,7 +657,8 @@ def main():
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚡ Inject Spreadsheet Data"):
-                # Placeholder for bulk_import_history
+                count = bulk_import_history()
+                st.success(f"Imported {count} players!")
                 st.cache_data.clear()
                 st.rerun()
                 
