@@ -236,7 +236,7 @@ def get_all_picks_for_gw(gw):
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
-        # 1. Ask API for the "Scheduled" matches
+        # 1. Ask API for the "Scheduled" matches to find the 'next' gameweek
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
         
@@ -382,86 +382,6 @@ def admin_reset_game(current_gw, is_rollover=False):
     new_mult = current_mult + 1 if is_rollover else 1
     update_game_settings(new_mult)
     return "ROLLOVER!" if is_rollover else "RESET!"
-
-def bulk_import_history():
-    def fix_team(t):
-        mapping = {
-            "Bournemouth": "AFC Bournemouth", "Arsenal": "Arsenal FC", "Chelsea": "Chelsea FC",
-            "Brighton": "Brighton & Hove Albion FC", "Aston Villa": "Aston Villa FC",
-            "Manchester City": "Manchester City FC", "Manchester United": "Manchester United FC",
-            "Newcastle": "Newcastle United FC", "Crystal Palace": "Crystal Palace FC",
-            "Fulham": "Fulham FC", "Nottingham Forest": "Nottingham Forest FC",
-            "Liverpool": "Liverpool FC", "West Ham": "West Ham United FC",
-            "Sunderland": "Sunderland AFC", "Brentford": "Brentford FC",
-            "Wolverhampton Wanderers": "Wolverhampton Wanderers FC"
-        }
-        return mapping.get(t, t + " FC" if "FC" not in t else t)
-
-    RAW_DATA = {
-        "Aidan Mannion": ["Bournemouth", "Arsenal", "Chelsea", "Brighton", "Aston Villa", "Manchester City", "Manchester United"],
-        "Alan Comiskey": ["Chelsea"],
-        "Barry Mackintosh": ["Chelsea"],
-        "Clevon Beadle": ["Manchester City"],
-        "Colin Jackson": ["Manchester United", "Sunderland"],
-        "Colin Taylor": ["Chelsea"],
-        "Connor Smith": ["Bournemouth", "Arsenal", "Chelsea", "Liverpool"],
-        "Conor Brady": ["Bournemouth", "Arsenal", "Crystal Palace"],
-        "Danny Mulgrew": ["Chelsea"],
-        "Drew Boult": ["Arsenal", "Manchester United"],
-        "Fraser Robson": ["Bournemouth", "Manchester United"],
-        "Gary McIntyre": ["Manchester City"],
-        "John McAllister": ["Chelsea"],
-        "Jonathan McCormack": ["Manchester City"],
-        "Katie Arnold": ["Newcastle", "Arsenal", "Chelsea", "Aston Villa", "Manchester City", "Crystal Palace", "Brighton"],
-        "Kevin Dorward": ["Chelsea"],
-        "Kyle Goldie": ["Manchester City"],
-        "Kirsti Chalmers": ["Chelsea"],
-        "Lee Brady": ["Newcastle", "Fulham", "Nottingham Forest", "Bournemouth"],
-        "Liam Samuels": ["Newcastle", "Manchester United"],
-        "Lyndon Rambottom": ["Arsenal", "Brighton", "Chelsea", "Liverpool"],
-        "Mark Roberts": ["Chelsea"],
-        "Martin Brady": ["Chelsea"],
-        "Max Dougall": ["Bournemouth", "Arsenal", "Chelsea", "Crystal Palace", "Aston Villa", "Manchester United", "Liverpool"],
-        "Michael Cumming": ["Chelsea"],
-        "Michael Gallagher": ["Newcastle", "Arsenal", "West Ham", "Liverpool"],
-        "Michael Mullen": ["Manchester City"],
-        "Nathanael Samuels": ["Chelsea"],
-        "Phil McLean": ["Chelsea"],
-        "Richard Cartner": ["Newcastle", "Sunderland"],
-        "Scott Hendry": ["Manchester City"],
-        "Sean Flatley": ["Manchester City"],
-        "Stan Payne": ["Wolverhampton Wanderers"],
-        "Theo Samuels": ["Newcastle", "Manchester City", "West Ham", "Chelsea", "Brentford", "Arsenal"],
-        "Thomas Kolakovic": ["Chelsea"],
-        "Thomas McArthur": ["Manchester City"],
-        "Tom Wright": ["Chelsea"],
-        "Zach Smith-Palmieri": ["Chelsea"]
-    }
-
-    count_players = 0
-    for name, picks in RAW_DATA.items():
-        is_active = (len(picks) == 7)
-        status = 'active' if is_active else 'eliminated'
-        eliminated_gw = (len(picks) + 8) if not is_active else None 
-        used_teams = []
-        for i, raw_team in enumerate(picks):
-            gw = i + 9
-            team_name = fix_team(raw_team)
-            used_teams.append(team_name)
-            result = 'WIN'
-            if not is_active and i == len(picks) - 1: result = 'LOSS'
-            
-            db.collection('picks').document(f"{name}_GW{gw}").set({
-                'user': name, 'team': team_name, 'matchday': gw, 
-                'timestamp': datetime.now(), 'result': result
-            })
-
-        db.collection('players').document(name).set({
-            'name': name, 'status': status, 'used_teams': used_teams, 
-            'eliminated_gw': eliminated_gw, 'email': '', 'password': ''
-        })
-        count_players += 1
-    return count_players
 
 def display_player_status(picks, matches, players_data, reveal_mode=False):
     # UPDATED: Wrapped in Expander + Standard List Layout
@@ -657,8 +577,9 @@ def main():
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚡ Inject Spreadsheet Data"):
-                count = bulk_import_history()
-                st.success(f"Imported {count} players!")
+                # Call bulk_import_history
+                # count = bulk_import_history() 
+                # st.success(f"Imported {count} players!")
                 st.cache_data.clear()
                 st.rerun()
                 
@@ -850,7 +771,8 @@ def main():
                             team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
                             if st.form_submit_button("SUBMIT PICK"):
                                 pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
-                                user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active', 'paid': False}, merge=True)
+                                # FIXED: Removed 'paid': False to prevent overwriting payment status
+                                user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
                                 st.success(f"✅ Pick Locked In for {actual_user_name}!")
                                 st.cache_data.clear() 
                                 st.rerun()
