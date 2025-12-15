@@ -64,7 +64,7 @@ def inject_custom_css():
         
         p, label { color: #ffffff !important; }
 
-        /* --- VERTICAL STACK LAYOUT (Original Style) --- */
+        /* --- VERTICAL STACK LAYOUT --- */
         .player-row-container {
             display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;
         }
@@ -231,12 +231,12 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
-# --- SMART GAMEWEEK CALCULATION (FIXED LOGIC) ---
+# --- SMART GAMEWEEK CALCULATION ---
 @st.cache_data(ttl=300) 
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
-        # 1. Ask API for the "Scheduled" matches
+        # 1. Ask API for the "Scheduled" matches to find the 'next' gameweek
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
         
@@ -272,7 +272,6 @@ def get_current_gameweek_from_api():
             
         # If no relevant matches left in GW16, check the buffer of the last relevant game.
         if picked_teams_prev:
-            # Filter matches to only those that were picked
             relevant_finished = [m for m in matches_prev if m['homeTeam']['name'] in picked_teams_prev or m['awayTeam']['name'] in picked_teams_prev]
             
             if relevant_finished:
@@ -332,20 +331,11 @@ def get_game_settings():
 def update_game_settings(multiplier):
     db.collection('settings').document('config').set({'rollover_multiplier': multiplier})
 
-# --- AUTO ELIMINATION LOGIC (DUAL CHECK) ---
+# --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(current_gw, matches):
-    # 1. Process CURRENT Gameweek
-    _process_single_gw(current_gw, matches)
-    
-    # 2. Process PREVIOUS Gameweek (Safe check for late results)
-    prev_gw = current_gw - 1
-    if prev_gw > 0:
-        matches_prev = get_matches_for_gameweek(prev_gw)
-        _process_single_gw(prev_gw, matches_prev)
-
-def _process_single_gw(gw, matches_data):
-    team_results = calculate_team_results(matches_data)
-    picks = get_all_picks_for_gw(gw)
+    # ONLY CHECK CURRENT WEEK TO AVOID "GHOST" ELIMINATIONS FROM PAST WEEKS
+    team_results = calculate_team_results(matches)
+    picks = get_all_picks_for_gw(current_gw)
     updates_made = False
     
     for p in picks:
@@ -362,7 +352,7 @@ def _process_single_gw(gw, matches_data):
             if player_data.exists:
                 current_status = player_data.to_dict().get('status')
                 if current_status == 'active':
-                    player_ref.update({'status': 'eliminated', 'eliminated_gw': gw})
+                    player_ref.update({'status': 'eliminated', 'eliminated_gw': current_gw})
                     updates_made = True
     
     if updates_made:
