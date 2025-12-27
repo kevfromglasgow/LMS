@@ -249,26 +249,22 @@ def log_attempt(user, action, details):
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
-        # 1. Ask API for the "Scheduled" matches
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
         
         if not data.get('matches'): return 38
         
-        # API says this is the upcoming GW (e.g. 17)
         api_gw = data['matches'][0]['matchday']
         
-        # 2. Check PREVIOUS GW (e.g. 16)
+        # Check PREVIOUS GW
         prev_gw = api_gw - 1
         if prev_gw < 1: return api_gw
         
-        # Check picks for PREVIOUS GW (16)
         picks_docs_prev = db.collection('picks').where('matchday', '==', prev_gw).stream()
         picked_teams_prev = {doc.to_dict().get('team') for doc in picks_docs_prev}
         
         matches_prev = get_matches_for_gameweek(prev_gw)
         
-        # Are there any relevant matches left in GW16?
         relevant_matches_prev = []
         for m in matches_prev:
             if m['status'] != 'FINISHED':
@@ -277,30 +273,26 @@ def get_current_gameweek_from_api():
                 if home in picked_teams_prev or away in picked_teams_prev:
                     relevant_matches_prev.append(m)
         
-        # If there ARE relevant matches still playing in GW16, STAY ON GW16.
+        # If there are relevant matches still playing in prev GW, stay on prev GW
         if relevant_matches_prev:
             return prev_gw
             
-        # If no relevant matches left in GW16, check the buffer of the last relevant game.
+        # If no relevant matches left, check if the last relevant one finished recently
         if picked_teams_prev:
             relevant_finished = [m for m in matches_prev if m['homeTeam']['name'] in picked_teams_prev or m['awayTeam']['name'] in picked_teams_prev]
-            
             if relevant_finished:
                 last_kickoff_str = max([m['utcDate'] for m in relevant_finished])
                 last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
                 game_over_time = last_kickoff + timedelta(minutes=135)
                 
-                # If the last relevant game finished less than 2 hours ago, stay on GW16
                 if datetime.utcnow() < game_over_time:
                     return prev_gw
 
-        # If we passed all checks, GW16 is officially done.
-        # Now we look at GW17. We return api_gw (17).
         return api_gw
         
     except Exception as e:
         print(f"Error in GW logic: {e}")
-        return 15 # Default fallback
+        return 15
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
@@ -499,49 +491,14 @@ def display_fixtures_visual(matches):
 # --- 5. MAIN APP LOGIC ---
 def main():
     inject_custom_css()
+    
+    # --- VISUAL PROOF CODE IS UPDATED ---
+    st.caption("DEBUG MODE ACTIVE - LOGS ENABLED")
 
-    # --- SIDEBAR ---
+    # --- ADMIN & TREASURER SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin Panel")
         
-        # --- 🚨 DEBUG: PUBLIC LOG VIEWER (NO PASSWORD REQUIRED) 🚨 ---
-        st.error(f"Login Status: {st.session_state.get('admin_logged_in', False)}")
-        
-        st.divider()
-        st.subheader("📜 Audit Logs (FORCED)")
-        
-        # Force a test log button to make sure database works
-        if st.button("🔴 CLICK ME TO TEST LOGS"):
-            log_attempt("TEST_USER", "TEST_CLICK", "Testing the log system")
-            st.success("Sent! Check table below.")
-            st.rerun()
-
-        # The Log Viewer
-        try:
-            # Get logs from Firestore
-            docs = db.collection('logs').stream()
-            log_list = []
-            for doc in docs:
-                d = doc.to_dict()
-                if 'timestamp' in d and d['timestamp']:
-                    d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-                log_list.append(d)
-            
-            if log_list:
-                df_logs = pd.DataFrame(log_list)
-                # Sort newest first
-                if 'timestamp' in df_logs.columns:
-                    df_logs = df_logs.sort_values(by='timestamp', ascending=False)
-                st.dataframe(df_logs, use_container_width=True, hide_index=True)
-            else:
-                st.info("Database connected, but 'logs' collection is empty.")
-                
-        except Exception as e:
-            st.error(f"🔥 Database Error: {e}")
-            
-        st.divider()
-        # -------------------------------------------------------------
-
         if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
         if 'treasurer_logged_in' not in st.session_state: st.session_state.treasurer_logged_in = False
 
@@ -866,6 +823,29 @@ def main():
 
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
+    
+    # --- LOG VIEWER MOVED TO BOTTOM OF MAIN PAGE ---
+    if st.session_state.admin_logged_in:
+        st.markdown("---")
+        with st.expander("👮 ADMIN LOGS (PUBLIC)", expanded=True):
+            try:
+                docs = db.collection('logs').stream()
+                log_list = []
+                for doc in docs:
+                    d = doc.to_dict()
+                    if 'timestamp' in d and d['timestamp']:
+                        d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+                    log_list.append(d)
+                
+                if log_list:
+                    df_logs = pd.DataFrame(log_list)
+                    if 'timestamp' in df_logs.columns:
+                        df_logs = df_logs.sort_values(by='timestamp', ascending=False)
+                    st.dataframe(df_logs, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No logs found.")
+            except Exception as e:
+                st.error(f"Error fetching logs: {e}")
 
 if __name__ == "__main__":
     main()
