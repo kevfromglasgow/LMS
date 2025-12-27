@@ -491,9 +491,6 @@ def display_fixtures_visual(matches):
 # --- 5. MAIN APP LOGIC ---
 def main():
     inject_custom_css()
-    
-    # --- VISUAL PROOF CODE IS UPDATED ---
-    st.caption("DEBUG MODE ACTIVE - LOGS ENABLED")
 
     # --- ADMIN & TREASURER SIDEBAR ---
     with st.sidebar:
@@ -548,6 +545,36 @@ def main():
 
         # ADMIN VIEW
         if st.session_state.admin_logged_in:
+            st.divider()
+            st.subheader("📜 Audit Logs")
+            
+            # --- LOG VIEWER IN SIDEBAR ---
+            if st.checkbox("Show Activity Log"): 
+                try:
+                    docs = db.collection('logs').stream()
+                    log_list = []
+                    for doc in docs:
+                        d = doc.to_dict()
+                        # Make timestamp readable
+                        if 'timestamp' in d and d['timestamp']:
+                            d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+                        log_list.append(d)
+                    
+                    if log_list:
+                        # Show table with newest on top
+                        df_logs = pd.DataFrame(log_list)
+                        # Reorder columns to put Timestamp and User first
+                        cols = ['timestamp', 'user', 'action', 'details']
+                        # Filter for cols that actually exist in data
+                        cols = [c for c in cols if c in df_logs.columns]
+                        df_logs = df_logs[cols].sort_values(by='timestamp', ascending=False)
+                        
+                        st.dataframe(df_logs, hide_index=True)
+                    else:
+                        st.info("No logs found in database yet.")
+                except Exception as e:
+                    st.error(f"Error fetching logs: {e}")
+
             st.divider()
             st.subheader("⚡ Super Admin Tools")
             
@@ -746,11 +773,9 @@ def main():
 
     if actual_user_name:
         # --- SILENT LOGGING START ---
-        # Log that they visited the app and selected their name
         if "last_logged_visit" not in st.session_state:
             st.session_state.last_logged_visit = None
             
-        # Only log if user changes or first time
         if st.session_state.last_logged_visit != actual_user_name:
             status_tag = "LATE" if now > deadline else "ON TIME"
             log_attempt(actual_user_name, "VISIT", f"Selected name. Status: {status_tag}")
@@ -823,29 +848,6 @@ def main():
 
     display_player_status(all_picks, matches, all_players_full, reveal_mode=is_reveal_active)
     display_fixtures_visual(matches)
-    
-    # --- LOG VIEWER MOVED TO BOTTOM OF MAIN PAGE ---
-    if st.session_state.admin_logged_in:
-        st.markdown("---")
-        with st.expander("👮 ADMIN LOGS (PUBLIC)", expanded=True):
-            try:
-                docs = db.collection('logs').stream()
-                log_list = []
-                for doc in docs:
-                    d = doc.to_dict()
-                    if 'timestamp' in d and d['timestamp']:
-                        d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-                    log_list.append(d)
-                
-                if log_list:
-                    df_logs = pd.DataFrame(log_list)
-                    if 'timestamp' in df_logs.columns:
-                        df_logs = df_logs.sort_values(by='timestamp', ascending=False)
-                    st.dataframe(df_logs, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No logs found.")
-            except Exception as e:
-                st.error(f"Error fetching logs: {e}")
 
 if __name__ == "__main__":
     main()
