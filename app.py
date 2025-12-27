@@ -231,33 +231,40 @@ def get_all_picks_for_gw(gw):
     try: return [p.to_dict() for p in db.collection('picks').where('matchday', '==', gw).stream()]
     except: return []
 
+# --- AUDIT LOGGING FUNCTION ---
+def log_attempt(user, action, details):
+    """Log any attempt (successful or failed) to Firestore for audit trail"""
+    try:
+        db.collection('logs').add({
+            'timestamp': datetime.now(),
+            'user': user,
+            'action': action,
+            'details': details
+        })
+    except:
+        pass # Don't crash app if logging fails
+
 # --- SMART GAMEWEEK CALCULATION ---
 @st.cache_data(ttl=300) 
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
-        # 1. Ask API for the "Scheduled" matches to find the 'next' gameweek
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
         
         if not data.get('matches'): return 38
         
-        # API says this is the upcoming GW (e.g. 17)
         api_gw = data['matches'][0]['matchday']
         
-        # 2. Check PREVIOUS GW (e.g. 16)
-        # We need to ensure GW16 is actually done before showing GW17.
-        
+        # Check PREVIOUS GW (e.g. 16)
         prev_gw = api_gw - 1
         if prev_gw < 1: return api_gw
         
-        # Check picks for PREVIOUS GW (16)
         picks_docs_prev = db.collection('picks').where('matchday', '==', prev_gw).stream()
         picked_teams_prev = {doc.to_dict().get('team') for doc in picks_docs_prev}
         
         matches_prev = get_matches_for_gameweek(prev_gw)
         
-        # Are there any relevant matches left in GW16?
         relevant_matches_prev = []
         for m in matches_prev:
             if m['status'] != 'FINISHED':
@@ -266,31 +273,24 @@ def get_current_gameweek_from_api():
                 if home in picked_teams_prev or away in picked_teams_prev:
                     relevant_matches_prev.append(m)
         
-        # If there ARE relevant matches still playing in GW16, STAY ON GW16.
         if relevant_matches_prev:
             return prev_gw
             
-        # If no relevant matches left in GW16, check the buffer of the last relevant game.
         if picked_teams_prev:
             relevant_finished = [m for m in matches_prev if m['homeTeam']['name'] in picked_teams_prev or m['awayTeam']['name'] in picked_teams_prev]
-            
             if relevant_finished:
                 last_kickoff_str = max([m['utcDate'] for m in relevant_finished])
                 last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
                 game_over_time = last_kickoff + timedelta(minutes=135)
                 
-                # If the last relevant game finished less than 2 hours ago, stay on GW16
                 if datetime.utcnow() < game_over_time:
                     return prev_gw
 
-        # If we passed all checks, GW16 is officially done.
-        # Now we look at GW17. 
-        # We just return api_gw (17). We DON'T skip it just because it has no picks yet.
         return api_gw
         
     except Exception as e:
         print(f"Error in GW logic: {e}")
-        return 15 # Default fallback
+        return 15
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
@@ -333,7 +333,6 @@ def update_game_settings(multiplier):
 
 # --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(current_gw, matches):
-    # ONLY CHECK CURRENT WEEK TO AVOID "GHOST" ELIMINATIONS FROM PAST WEEKS
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(current_gw)
     updates_made = False
@@ -379,7 +378,6 @@ def admin_reset_game(current_gw, is_rollover=False):
     return "ROLLOVER!" if is_rollover else "RESET!"
 
 def display_player_status(picks, matches, players_data, reveal_mode=False):
-    # UPDATED: Wrapped in Expander + Standard List Layout
     team_results = calculate_team_results(matches)
     user_pick_map = {p['user']: p['team'] for p in picks}
     crest_map = {}
@@ -411,7 +409,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
     active_players.sort(key=lambda x: x['name'])
     eliminated_players.sort(key=lambda x: (x.get('pending_elimination', False), x.get('eliminated_gw', 0)), reverse=True)
 
-    # --- STILL STANDING SECTION (EXPANDABLE) ---
     standing_title = f"🛡️ STILL STANDING ({len(active_players)})"
     if not reveal_mode:
         standing_title += " - 🔒 PICKS HIDDEN"
@@ -447,7 +444,6 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
         if waiting_count > 0:
             st.caption(f"⏳ Waiting for picks from {waiting_count} other players...")
 
-    # --- THE FALLEN SECTION (EXPANDABLE) ---
     if eliminated_players:
         with st.expander(f"🪦 THE FALLEN ({len(eliminated_players)})", expanded=False):
             elim_html = ""
@@ -547,7 +543,6 @@ def main():
             st.subheader("⚡ Super Admin Tools")
             
             real_gw = get_current_gameweek_from_api() 
-            # FIXED: Slider default value is now real_gw to prevent accidental sweeps
             gw_override = st.slider("📆 Override Gameweek", min_value=1, max_value=38, value=real_gw)
             
             st.divider()
@@ -573,7 +568,6 @@ def main():
                 st.cache_data.clear()
                 st.rerun()
             if st.button("⚡ Inject Spreadsheet Data"):
-                # Placeholder for bulk_import_history
                 st.cache_data.clear()
                 st.rerun()
                 
@@ -600,6 +594,7 @@ def main():
                             'timestamp': datetime.now(),
                             'result': 'PENDING'
                         })
+                        log_attempt(force_name, "FORCE_PICK", f"Admin forced {force_team} for GW{force_gw}")
                         st.success(f"Forced {force_name} with {force_team}!")
                         st.cache_data.clear()
                     else:
@@ -753,23 +748,33 @@ def main():
                 st.success(f"✅ {actual_user_name} has already made a selection for Gameweek {gw}.")
                 st.caption("See the 'Still Standing' list below.")
             else:
+                # --- SUBMISSION LOGIC ---
+                used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
+                valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
+                available = sorted([t for t in valid if t not in used])
+                
                 if now > deadline:
                     st.error("🚫 Gameweek Locked")
+                    # Log the failed attempt (late)
+                    if st.button("Try Submit (Locked)"): 
+                        log_attempt(actual_user_name, "FAIL_LATE", f"Attempted pick after deadline for GW{gw}")
                 else:
-                    used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
-                    valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
-                    available = sorted([t for t in valid if t not in used])
                     if not available: st.warning("No teams available.")
                     else:
                         with st.form("pick_form"):
                             team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
                             if st.form_submit_button("SUBMIT PICK"):
-                                pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
-                                # FIXED: Removed 'paid': False to prevent overwriting payment status
-                                user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
-                                st.success(f"✅ Pick Locked In for {actual_user_name}!")
-                                st.cache_data.clear() 
-                                st.rerun()
+                                try:
+                                    pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
+                                    user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
+                                    log_attempt(actual_user_name, "SUCCESS", f"Picked {team_choice} for GW{gw}")
+                                    st.success(f"✅ Pick Locked In for {actual_user_name}!")
+                                    st.cache_data.clear() 
+                                    st.rerun()
+                                except Exception as e:
+                                    log_attempt(actual_user_name, "ERROR", str(e))
+                                    st.error("An error occurred. Please try again.")
+                                    
                     if used: st.info(f"Teams used by {actual_user_name}: {', '.join(used)}")
 
     st.markdown("---")
