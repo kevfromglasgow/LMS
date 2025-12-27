@@ -551,8 +551,38 @@ def main():
             
             st.metric("Total Collected", f"£{paid_count * ENTRY_FEE}")
 
-        # ADMIN VIEW
+# ADMIN VIEW
         if st.session_state.admin_logged_in:
+            st.divider()
+            st.subheader("📜 Audit Logs (DEBUG)")
+            
+            # --- FORCE LOG VIEWER TO TOP ---
+            if st.checkbox("Show Activity Log", value=True): # Default to Open
+                try:
+                    docs = db.collection('logs').stream()
+                    log_list = []
+                    for doc in docs:
+                        d = doc.to_dict()
+                        # Make timestamp readable
+                        if 'timestamp' in d and d['timestamp']:
+                            d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+                        log_list.append(d)
+                    
+                    if log_list:
+                        # Show table with newest on top
+                        df_logs = pd.DataFrame(log_list)
+                        # Reorder columns to put Timestamp and User first
+                        cols = ['timestamp', 'user', 'action', 'details']
+                        # Filter for cols that actually exist in data
+                        cols = [c for c in cols if c in df_logs.columns]
+                        df_logs = df_logs[cols].sort_values(by='timestamp', ascending=False)
+                        
+                        st.dataframe(df_logs, hide_index=True)
+                    else:
+                        st.info("No logs found in database yet.")
+                except Exception as e:
+                    st.error(f"Error fetching logs: {e}")
+
             st.divider()
             st.subheader("⚡ Super Admin Tools")
             
@@ -639,27 +669,6 @@ def main():
                     st.rerun()
                 else:
                     st.info("Everyone has picked!")
-
-            st.divider()
-            st.subheader("📜 Audit Logs")
-            if st.checkbox("Show Activity Log"):
-                try:
-                    docs = db.collection('logs').stream()
-                    log_list = []
-                    for doc in docs:
-                        d = doc.to_dict()
-                        if 'timestamp' in d and d['timestamp']:
-                            d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-                        log_list.append(d)
-                    
-                    if log_list:
-                        df_logs = pd.DataFrame(log_list)
-                        df_logs = df_logs.sort_values(by='timestamp', ascending=False)
-                        st.dataframe(df_logs, hide_index=True)
-                    else:
-                        st.info("No logs found.")
-                except Exception as e:
-                    st.error(f"Error fetching logs: {e}")
 
             st.divider()
             st.subheader("Test Simulations")
