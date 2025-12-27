@@ -256,7 +256,7 @@ def get_current_gameweek_from_api():
         
         api_gw = data['matches'][0]['matchday']
         
-        # Check PREVIOUS GW (e.g. 16)
+        # Check PREVIOUS GW
         prev_gw = api_gw - 1
         if prev_gw < 1: return api_gw
         
@@ -273,9 +273,11 @@ def get_current_gameweek_from_api():
                 if home in picked_teams_prev or away in picked_teams_prev:
                     relevant_matches_prev.append(m)
         
+        # If there are relevant matches still playing in prev GW, stay on prev GW
         if relevant_matches_prev:
             return prev_gw
             
+        # If no relevant matches left, check if the last relevant one finished recently
         if picked_teams_prev:
             relevant_finished = [m for m in matches_prev if m['homeTeam']['name'] in picked_teams_prev or m['awayTeam']['name'] in picked_teams_prev]
             if relevant_finished:
@@ -625,6 +627,27 @@ def main():
                     st.rerun()
                 else:
                     st.info("Everyone has picked!")
+
+            st.divider()
+            st.subheader("📜 Audit Logs")
+            if st.checkbox("Show Activity Log"):
+                try:
+                    docs = db.collection('logs').stream()
+                    log_list = []
+                    for doc in docs:
+                        d = doc.to_dict()
+                        if 'timestamp' in d and d['timestamp']:
+                            d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+                        log_list.append(d)
+                    
+                    if log_list:
+                        df_logs = pd.DataFrame(log_list)
+                        df_logs = df_logs.sort_values(by='timestamp', ascending=False)
+                        st.dataframe(df_logs, hide_index=True)
+                    else:
+                        st.info("No logs found.")
+                except Exception as e:
+                    st.error(f"Error fetching logs: {e}")
 
             st.divider()
             st.subheader("Test Simulations")
