@@ -500,10 +500,48 @@ def display_fixtures_visual(matches):
 def main():
     inject_custom_css()
 
-    # --- ADMIN & TREASURER SIDEBAR ---
+    # --- SIDEBAR ---
     with st.sidebar:
         st.header("🔧 Admin Panel")
         
+        # --- 🚨 DEBUG: PUBLIC LOG VIEWER (NO PASSWORD REQUIRED) 🚨 ---
+        st.error(f"Login Status: {st.session_state.get('admin_logged_in', False)}")
+        
+        st.divider()
+        st.subheader("📜 Audit Logs (FORCED)")
+        
+        # Force a test log button to make sure database works
+        if st.button("🔴 CLICK ME TO TEST LOGS"):
+            log_attempt("TEST_USER", "TEST_CLICK", "Testing the log system")
+            st.success("Sent! Check table below.")
+            st.rerun()
+
+        # The Log Viewer
+        try:
+            # Get logs from Firestore
+            docs = db.collection('logs').stream()
+            log_list = []
+            for doc in docs:
+                d = doc.to_dict()
+                if 'timestamp' in d and d['timestamp']:
+                    d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
+                log_list.append(d)
+            
+            if log_list:
+                df_logs = pd.DataFrame(log_list)
+                # Sort newest first
+                if 'timestamp' in df_logs.columns:
+                    df_logs = df_logs.sort_values(by='timestamp', ascending=False)
+                st.dataframe(df_logs, use_container_width=True, hide_index=True)
+            else:
+                st.info("Database connected, but 'logs' collection is empty.")
+                
+        except Exception as e:
+            st.error(f"🔥 Database Error: {e}")
+            
+        st.divider()
+        # -------------------------------------------------------------
+
         if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
         if 'treasurer_logged_in' not in st.session_state: st.session_state.treasurer_logged_in = False
 
@@ -551,38 +589,8 @@ def main():
             
             st.metric("Total Collected", f"£{paid_count * ENTRY_FEE}")
 
-# ADMIN VIEW
+        # ADMIN VIEW
         if st.session_state.admin_logged_in:
-            st.divider()
-            st.subheader("📜 Audit Logs (DEBUG)")
-            
-            # --- FORCE LOG VIEWER TO TOP ---
-            if st.checkbox("Show Activity Log", value=True): # Default to Open
-                try:
-                    docs = db.collection('logs').stream()
-                    log_list = []
-                    for doc in docs:
-                        d = doc.to_dict()
-                        # Make timestamp readable
-                        if 'timestamp' in d and d['timestamp']:
-                            d['timestamp'] = d['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
-                        log_list.append(d)
-                    
-                    if log_list:
-                        # Show table with newest on top
-                        df_logs = pd.DataFrame(log_list)
-                        # Reorder columns to put Timestamp and User first
-                        cols = ['timestamp', 'user', 'action', 'details']
-                        # Filter for cols that actually exist in data
-                        cols = [c for c in cols if c in df_logs.columns]
-                        df_logs = df_logs[cols].sort_values(by='timestamp', ascending=False)
-                        
-                        st.dataframe(df_logs, hide_index=True)
-                    else:
-                        st.info("No logs found in database yet.")
-                except Exception as e:
-                    st.error(f"Error fetching logs: {e}")
-
             st.divider()
             st.subheader("⚡ Super Admin Tools")
             
