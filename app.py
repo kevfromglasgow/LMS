@@ -249,22 +249,26 @@ def log_attempt(user, action, details):
 def get_current_gameweek_from_api():
     headers = {'X-Auth-Token': API_KEY}
     try:
+        # 1. Ask API for the "Scheduled" matches
         r = requests.get(f"https://api.football-data.org/v4/competitions/{PL_COMPETITION_ID}/matches?status=SCHEDULED", headers=headers)
         data = r.json()
         
         if not data.get('matches'): return 38
         
+        # API says this is the upcoming GW (e.g. 17)
         api_gw = data['matches'][0]['matchday']
         
-        # Check PREVIOUS GW
+        # 2. Check PREVIOUS GW (e.g. 16)
         prev_gw = api_gw - 1
         if prev_gw < 1: return api_gw
         
+        # Check picks for PREVIOUS GW (16)
         picks_docs_prev = db.collection('picks').where('matchday', '==', prev_gw).stream()
         picked_teams_prev = {doc.to_dict().get('team') for doc in picks_docs_prev}
         
         matches_prev = get_matches_for_gameweek(prev_gw)
         
+        # Are there any relevant matches left in GW16?
         relevant_matches_prev = []
         for m in matches_prev:
             if m['status'] != 'FINISHED':
@@ -273,11 +277,11 @@ def get_current_gameweek_from_api():
                 if home in picked_teams_prev or away in picked_teams_prev:
                     relevant_matches_prev.append(m)
         
-        # If there are relevant matches still playing in prev GW, stay on prev GW
+        # If there ARE relevant matches still playing in GW16, STAY ON GW16.
         if relevant_matches_prev:
             return prev_gw
             
-        # If no relevant matches left, check if the last relevant one finished recently
+        # If no relevant matches left in GW16, check the buffer of the last relevant game.
         if picked_teams_prev:
             relevant_finished = [m for m in matches_prev if m['homeTeam']['name'] in picked_teams_prev or m['awayTeam']['name'] in picked_teams_prev]
             if relevant_finished:
@@ -285,6 +289,7 @@ def get_current_gameweek_from_api():
                 last_kickoff = datetime.fromisoformat(last_kickoff_str.replace('Z', ''))
                 game_over_time = last_kickoff + timedelta(minutes=135)
                 
+                # If the last relevant game finished less than 2 hours ago, stay on GW16
                 if datetime.utcnow() < game_over_time:
                     return prev_gw
 
@@ -292,7 +297,7 @@ def get_current_gameweek_from_api():
         
     except Exception as e:
         print(f"Error in GW logic: {e}")
-        return 15
+        return 15 # Default fallback
 
 @st.cache_data(ttl=600)
 def get_matches_for_gameweek(gw):
@@ -335,7 +340,7 @@ def update_game_settings(multiplier):
 
 # --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(current_gw, matches):
-    # Only check CURRENT WEEK results to prevent historical overwrites
+    # ONLY CHECK CURRENT WEEK TO AVOID "GHOST" ELIMINATIONS FROM PAST WEEKS
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(current_gw)
     updates_made = False
@@ -773,9 +778,11 @@ def main():
 
     if actual_user_name:
         # --- SILENT LOGGING START ---
+        # Log that they visited the app and selected their name
         if "last_logged_visit" not in st.session_state:
             st.session_state.last_logged_visit = None
             
+        # Only log if user changes or first time
         if st.session_state.last_logged_visit != actual_user_name:
             status_tag = "LATE" if now > deadline else "ON TIME"
             log_attempt(actual_user_name, "VISIT", f"Selected name. Status: {status_tag}")
@@ -807,15 +814,22 @@ def main():
                         with st.form("pick_form"):
                             team_choice = st.selectbox(f"Pick a team for {actual_user_name}:", available)
                             if st.form_submit_button("SUBMIT PICK"):
+                                # 1. Log Click Intent
+                                log_attempt(actual_user_name, "CLICKED_SUBMIT", f"User clicked submit for {team_choice}")
+                                
                                 try:
                                     pick_ref.set({'user': actual_user_name, 'team': team_choice, 'matchday': gw, 'timestamp': datetime.now()})
                                     # FIXED: Removed 'paid': False to prevent overwriting payment status
                                     user_ref.set({'name': actual_user_name, 'used_teams': firestore.ArrayUnion([team_choice]), 'status': 'active'}, merge=True)
-                                    log_attempt(actual_user_name, "SUCCESS", f"Picked {team_choice} for GW{gw}")
+                                    
+                                    # 2. Log Success
+                                    log_attempt(actual_user_name, "SUCCESS", f"Write to DB complete")
+                                    
                                     st.success(f"✅ Pick Locked In for {actual_user_name}!")
                                     st.cache_data.clear() 
                                     st.rerun()
                                 except Exception as e:
+                                    # 3. Log Error
                                     log_attempt(actual_user_name, "ERROR", str(e))
                                     st.error("An error occurred. Please try again.")
                                     
