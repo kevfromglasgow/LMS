@@ -340,7 +340,7 @@ def update_game_settings(multiplier):
 
 # --- AUTO ELIMINATION LOGIC ---
 def auto_process_eliminations(current_gw, matches):
-    # ONLY CHECK CURRENT WEEK TO AVOID "GHOST" ELIMINATIONS FROM PAST WEEKS
+    # Only check CURRENT WEEK results to prevent historical overwrites
     team_results = calculate_team_results(matches)
     picks = get_all_picks_for_gw(current_gw)
     updates_made = False
@@ -611,6 +611,29 @@ def main():
             if st.button("⚡ Inject Spreadsheet Data"):
                 st.cache_data.clear()
                 st.rerun()
+            
+            # --- NEW FEATURE: MANUAL ELIMINATION ---
+            st.divider()
+            st.subheader("💀 Manual Elimination")
+            with st.expander("Manually Eliminate a Player"):
+                # Get list of active players for dropdown
+                active_p_list = [p['name'] for p in get_all_players_full() if p.get('status') == 'active']
+                
+                if active_p_list:
+                    player_to_kill = st.selectbox("Select Player:", active_p_list, key="kill_select")
+                    kill_gw = st.number_input("Eliminated in Gameweek:", min_value=1, max_value=38, value=gw_override, key="kill_gw")
+                    
+                    if st.button("Confirm Elimination", type="primary"):
+                        db.collection('players').document(player_to_kill).update({
+                            'status': 'eliminated',
+                            'eliminated_gw': kill_gw
+                        })
+                        log_attempt("ADMIN", "MANUAL_ELIMINATION", f"Eliminated {player_to_kill} for GW{kill_gw}")
+                        st.success(f"{player_to_kill} has been eliminated.")
+                        st.cache_data.clear()
+                        st.rerun()
+                else:
+                    st.info("No active players left to eliminate.")
                 
             st.divider()
             st.subheader("⚡ Emergency Force Pick")
