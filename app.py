@@ -611,7 +611,7 @@ def main():
             if st.button("⚡ Inject Spreadsheet Data"):
                 st.cache_data.clear()
                 st.rerun()
-            
+                
             # --- NEW FEATURE: MANUAL ELIMINATION ---
             st.divider()
             st.subheader("💀 Manual Elimination")
@@ -706,6 +706,15 @@ def main():
             
             if st.session_state.sim_winner: st.warning("Simulating WINNER")
             if st.session_state.sim_rollover: st.warning("Simulating ROLLOVER")
+
+    # --- 🚧 MAINTENANCE MODE SWITCH 🚧 ---
+    MAINTENANCE_MODE = True  # Change to False when you want to reopen the site
+    
+    if MAINTENANCE_MODE and not st.session_state.get('admin_logged_in', False):
+        st.markdown("<br><br><h1 style='text-align: center;'>🚧 Under Maintenance 🚧</h1>", unsafe_allow_html=True)
+        st.info("The site is temporarily paused for upgrades and data checks. All picks, payments, and progress are safely stored. Please check back shortly!")
+        st.stop() # This stops the rest of the page from loading for normal users
+    # -------------------------------------
 
     st.markdown("""
         <div class="hero-container">
