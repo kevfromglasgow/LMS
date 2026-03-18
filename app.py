@@ -769,11 +769,19 @@ def main():
     settings = get_game_settings()
     multiplier = settings.get('rollover_multiplier', 1)
     
-    upcoming = [m for m in matches if m['status'] == 'SCHEDULED']
-    if upcoming:
-        first_kickoff = get_gameweek_deadline(upcoming)
-    else:
-        first_kickoff = get_gameweek_deadline(matches)
+# --- DEADLINE FIX ---
+    # Filter out ancient matches so they don't drag the deadline back to February
+    valid_matches_for_deadline = []
+    for m in matches:
+        dt = datetime.fromisoformat(m['utcDate'].replace('Z', ''))
+        # Ignore games that finished more than 5 days ago
+        if m['status'] in ['FINISHED', 'AWARDED'] and (datetime.utcnow() - dt).days > 5:
+            continue
+        valid_matches_for_deadline.append(m)
+
+    # The deadline is ALWAYS based on the very first valid match of the week
+    first_kickoff = get_gameweek_deadline(valid_matches_for_deadline)
+    # --------------------
         
     deadline = first_kickoff - timedelta(hours=1)
     reveal_time = first_kickoff - timedelta(minutes=30)
