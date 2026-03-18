@@ -474,11 +474,24 @@ def display_player_status(picks, matches, players_data, reveal_mode=False):
                 elim_html += f'<div class="{card_class}"><div class="pc-name" style="color:#aaa">{name}</div><div class="pc-center">{mid}</div>{btm}</div>'
             st.markdown(f'<div class="player-row-container">{elim_html}</div>', unsafe_allow_html=True)
 
+# --- VISUAL FIXTURES LIST ---
 def display_fixtures_visual(matches):
     st.subheader(f"Fixtures")
+    now = datetime.utcnow()
+    
     for match in matches:
         home, away = match['homeTeam'], match['awayTeam']
-        status, dt = match['status'], datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
+        status = match['status']
+        
+        # Calculate how old the match is using naive datetime to avoid offset issues
+        dt_naive = datetime.fromisoformat(match['utcDate'].replace('Z', ''))
+        
+        # HIDE OLD GAMES: If the match finished more than 5 days ago, skip it entirely
+        if status == 'FINISHED' and (now - dt_naive).days > 5:
+            continue
+            
+        # Re-add timezone for visual formatting
+        dt = datetime.fromisoformat(match['utcDate'].replace('Z', '+00:00'))
         
         if status == 'FINISHED':
             h, a = match['score']['fullTime']['home'], match['score']['fullTime']['away']
@@ -835,7 +848,14 @@ def main():
             else:
                 # --- SUBMISSION LOGIC ---
                 used = user_doc.to_dict().get('used_teams', []) if user_doc.exists else []
-                valid = set([m['homeTeam']['name'] for m in matches] + [m['awayTeam']['name'] for m in matches])
+                
+                # CHEAT PREVENTION: Only add teams to the dropdown if their match hasn't finished yet
+                valid = set()
+                for m in matches:
+                    if m['status'] not in ['FINISHED', 'AWARDED']:
+                        valid.add(m['homeTeam']['name'])
+                        valid.add(m['awayTeam']['name'])
+                        
                 available = sorted([t for t in valid if t not in used])
                 
                 if now > deadline:
