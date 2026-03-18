@@ -708,7 +708,7 @@ def main():
             if st.session_state.sim_rollover: st.warning("Simulating ROLLOVER")
 
     # --- 🚧 MAINTENANCE MODE SWITCH 🚧 ---
-    MAINTENANCE_MODE = True  # Change to False when you want to reopen the site
+    MAINTENANCE_MODE = False  # Change to False when you want to reopen the site
     
     if MAINTENANCE_MODE and not st.session_state.get('admin_logged_in', False):
         st.markdown("<br><br><h1 style='text-align: center;'>🚧 Under Maintenance 🚧</h1>", unsafe_allow_html=True)
