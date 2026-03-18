@@ -613,15 +613,25 @@ def main():
             
             if st.button("🔄 ROLLOVER (Everyone Lost)"):
                 msg = admin_reset_game(gw_override, is_rollover=True)
+                
+                # Wipe Streamlit's memory of the payment checkboxes
+                for key in list(st.session_state.keys()):
+                    if key.startswith('pay_'):
+                        del st.session_state[key]
+                        
                 st.warning(msg)
                 st.cache_data.clear()
                 st.rerun()
+                
             if st.button("⚠️ HARD RESET (New Season)"):
                 msg = admin_reset_game(gw_override, is_rollover=False)
+                
+                # Wipe Streamlit's memory of the payment checkboxes
+                for key in list(st.session_state.keys()):
+                    if key.startswith('pay_'):
+                        del st.session_state[key]
+                        
                 st.success(msg)
-                st.cache_data.clear()
-                st.rerun()
-            if st.button("⚡ Inject Spreadsheet Data"):
                 st.cache_data.clear()
                 st.rerun()
                 
